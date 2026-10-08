@@ -746,9 +746,10 @@ neru config validate [-c <path>]
 Check a config file for syntax errors and invalid values, including the mode
 flags in your bindings. Exits successfully when no config file exists.
 
-A setting that loads but will not take effect is a warning, and the command
-still succeeds. Examples are `grid --search`, or a clickable role this
-platform has no name for. [Global hotkeys](configuration.md#global-hotkeys)
+A setting that loads but will not take effect is a warning. So is a
+deprecated setting, which works until it is removed. The command still
+succeeds. Examples are `grid --search`, a clickable role this platform has no
+name for, or `hints.on_mission_control_activated`. [Global hotkeys](configuration.md#global-hotkeys)
 lists which mistakes warn and which refuse the file.
 
 ```
@@ -756,7 +757,7 @@ Configuration is valid, with warnings:
 
   hotkeys.Primary+Shift+G: grid does not accept --search
 
-These parts of the configuration load and will not take effect.
+These parts of the configuration load. Each one will not take effect or is deprecated, so change it as its line says.
 ```
 
 ### neru config set
@@ -776,6 +777,10 @@ to the [override file](../guide/configuring.md#how-the-layers-combine).
 Values: a string `"asdfghjkl"`, integer `14`, boolean `true`, float `0.5`,
 color `"#FF0000AA"` or `{"light":"#000","dark":"#FFF"}`, or array
 `"button,link"` or `'["button","link"]'`.
+
+A list of steps, such as a hook, is never split at commas, because a step can
+contain one. Give one step as is, `'exec echo a,b'`, or several as a TOML
+array, `'["exec echo a,b", "idle"]'`.
 
 Setting several dependent values with `--no-reload` is shown in
 [Configuring Neru](../guide/configuring.md#change-one-value-without-editing-the-file).
