@@ -175,71 +175,118 @@ int NeruScrollAtPoint(CGPoint pos, int deltaX, int deltaY, CGEventFlags flags) {
 
 #pragma mark - Mission Control Detection Functions
 
-/// Internal function to detect Mission Control state using window enumeration
-/// Detects MC across multiple macOS versions by checking for:
-///   1. "Mission Control" app windows (macOS 13 and earlier)
-///   2. Dock overlay windows at elevated layers (macOS 14 Sonoma, layers ~18-20)
-///   3. Dock overlay windows at broader ranges (macOS 15 Sequoia/Tahoe)
+/// How long one Dock query may take before detection gives up on it.
+static const float kNeruDockQueryTimeout = 0.25f;
+
+/// Whether Mission Control is up. While it is, the Dock's accessibility tree
+/// has a child group whose identifier is "mc", and at no other time: App
+/// Expose, Show Desktop and the Apps launcher leave it out.
+///
+/// The window list cannot answer this. The Dock keeps one full-display window
+/// at its own layer, and that window is on screen whenever the Dock is visible,
+/// with or without Mission Control.
+///
+/// A read that does not complete, such as a Dock too busy to answer within the
+/// timeout, returns the last known state, so it reports no transition.
 /// @return true if Mission Control is active, false otherwise
 static bool detectMissionControlActive(void) {
 	@autoreleasepool {
-		CFArrayRef windowList = CGWindowListCopyWindowInfo(kCGWindowListOptionAll, kCGNullWindowID);
-		if (!windowList) {
-			return false;
+		NSRunningApplication *dock =
+		    [[NSRunningApplication runningApplicationsWithBundleIdentifier:@"com.apple.dock"] firstObject];
+		if (!dock) {
+			return getCachedMissionControlState();
 		}
 
-		CFIndex count = CFArrayGetCount(windowList);
-		int dockHighLayerWindows = 0;
-		int dockOverlayWindows = 0;
-
-		for (CFIndex i = 0; i < count; i++) {
-			CFDictionaryRef windowInfo = (CFDictionaryRef)CFArrayGetValueAtIndex(windowList, i);
-			if (!windowInfo)
-				continue;
-
-			CFStringRef ownerName = (CFStringRef)CFDictionaryGetValue(windowInfo, kCGWindowOwnerName);
-			if (!ownerName)
-				continue;
-
-			// Check if Mission Control app is visible (macOS 13 and earlier)
-			if (CFStringCompare(ownerName, CFSTR("Mission Control"), 0) == kCFCompareEqualTo) {
-				CFRelease(windowList);
-				return YES;
-			}
-
-			if (CFStringCompare(ownerName, CFSTR("Dock"), 0) != kCFCompareEqualTo)
-				continue;
-
-			CFNumberRef windowLayer = (CFNumberRef)CFDictionaryGetValue(windowInfo, kCGWindowLayer);
-			if (!windowLayer)
-				continue;
-
-			int layer = 0;
-			CFNumberGetValue(windowLayer, kCFNumberIntType, &layer);
-
-			// Layers 18-20: Dock MC overlays on macOS 14 Sonoma
-			if (layer >= 18 && layer <= 20) {
-				dockHighLayerWindows++;
-				if (dockHighLayerWindows >= 2) {
-					CFRelease(windowList);
-					return YES;
-				}
-			}
-
-			// Layers 14-25: broader range covering macOS 15 Sequoia/Tahoe
-			// where the window manager may use different layers
-			if (layer >= 14 && layer <= 25) {
-				dockOverlayWindows++;
-				if (dockOverlayWindows >= 3) {
-					CFRelease(windowList);
-					return YES;
-				}
-			}
+		AXUIElementRef dockElement = AXUIElementCreateApplication(dock.processIdentifier);
+		if (!dockElement) {
+			return getCachedMissionControlState();
 		}
 
-		CFRelease(windowList);
-		return NO;
+		AXUIElementSetMessagingTimeout(dockElement, kNeruDockQueryTimeout);
+
+		CFArrayRef children = NULL;
+		AXError childrenErr = AXUIElementCopyAttributeValue(dockElement, kAXChildrenAttribute, (CFTypeRef *)&children);
+		CFRelease(dockElement);
+
+		if (childrenErr != kAXErrorSuccess || !children) {
+			return getCachedMissionControlState();
+		}
+
+		bool active = false;
+		CFIndex count = CFArrayGetCount(children);
+
+		for (CFIndex i = 0; i < count && !active; i++) {
+			AXUIElementRef child = (AXUIElementRef)CFArrayGetValueAtIndex(children, i);
+			AXUIElementSetMessagingTimeout(child, kNeruDockQueryTimeout);
+
+			CFTypeRef identifier = NULL;
+			AXError identifierErr = AXUIElementCopyAttributeValue(child, kAXIdentifierAttribute, &identifier);
+
+			// A child without an identifier is not "mc", which still answers the
+			// question. A read that timed out answers nothing, so the last known
+			// state stands.
+			if (identifierErr == kAXErrorCannotComplete) {
+				CFRelease(children);
+				return getCachedMissionControlState();
+			}
+
+			if (identifierErr != kAXErrorSuccess || !identifier) {
+				continue;
+			}
+
+			active = CFGetTypeID(identifier) == CFStringGetTypeID() &&
+			         CFStringCompare((CFStringRef)identifier, CFSTR("mc"), 0) == kCFCompareEqualTo;
+			CFRelease(identifier);
+		}
+
+		CFRelease(children);
+		return active;
 	}
+}
+
+/// Whether the window a Mission Control thumbnail stands for is on screen.
+/// WindowManager names it in an undocumented "wid" attribute. It lists the
+/// windows of every desktop, and only the current desktop's are on screen.
+bool NeruIsElementWindowOnScreen(void *element, bool *hasWindow) {
+	if (hasWindow)
+		*hasWindow = false;
+	if (!element)
+		return false;
+
+	CFTypeRef value = NULL;
+	if (AXUIElementCopyAttributeValue((AXUIElementRef)element, CFSTR("wid"), &value) != kAXErrorSuccess || !value) {
+		return false;
+	}
+
+	CGWindowID windowID = 0;
+	bool isNumber = CFGetTypeID(value) == CFNumberGetTypeID() &&
+	                CFNumberGetValue((CFNumberRef)value, kCFNumberSInt32Type, &windowID);
+	CFRelease(value);
+
+	if (!isNumber || windowID == 0)
+		return false;
+
+	if (hasWindow)
+		*hasWindow = true;
+
+	CFArrayRef windowIDs = CFArrayCreate(NULL, (const void **)(uintptr_t[]){windowID}, 1, NULL);
+	if (!windowIDs)
+		return false;
+
+	CFArrayRef descriptions = CGWindowListCreateDescriptionFromArray(windowIDs);
+	CFRelease(windowIDs);
+	if (!descriptions)
+		return false;
+
+	bool onScreen = false;
+	if (CFArrayGetCount(descriptions) > 0) {
+		CFDictionaryRef description = (CFDictionaryRef)CFArrayGetValueAtIndex(descriptions, 0);
+		CFBooleanRef isOnScreen = (CFBooleanRef)CFDictionaryGetValue(description, kCGWindowIsOnscreen);
+		onScreen = isOnScreen && CFBooleanGetValue(isOnScreen);
+	}
+
+	CFRelease(descriptions);
+	return onScreen;
 }
 
 /// Enable or disable Mission Control detection.
