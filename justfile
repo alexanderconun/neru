@@ -132,8 +132,14 @@ build-settings:
         -o bin/NeruSettings.app/Contents/MacOS/NeruSettings macos/NeruSettings/Sources/*.swift
     cp macos/NeruSettings/Info.plist bin/NeruSettings.app/Contents/
     cp resources/icon.icns bin/NeruSettings.app/Contents/Resources/
-    codesign --force --sign - bin/NeruSettings.app
+    codesign --force --sign "${NERU_SIGN_IDENTITY:--}" bin/NeruSettings.app
     @echo "✓ Build complete: bin/NeruSettings.app"
+
+# Build build/dist/Homekey.app (binary, settings app, self-checks, signing) and
+# print how to install it. Installs nothing; see HOMEKEY.md.
+[doc('Build build/dist/Homekey.app and print the manual install steps.')]
+app:
+    bash scripts/build-app.sh
 
 # Self-check the settings app's pure logic (config text edits, launchers, …)
 [doc('Run the NeruSettings self-checks.')]
@@ -199,15 +205,16 @@ release-ci-windows ARCH VERSION_OVERRIDE:
     CGO_ENABLED=0 GOOS=windows GOARCH={{ ARCH }} go build -ldflags="-s -w -X github.com/y3owk1n/neru/internal/buildinfo.Version={{ VERSION_OVERRIDE }} -X github.com/y3owk1n/neru/internal/buildinfo.GitCommit={{ GIT_COMMIT }} -X github.com/y3owk1n/neru/internal/buildinfo.BuildDate={{ BUILD_DATE }}" -trimpath -o bin/neru-windows-{{ ARCH }}.exe ./cmd/neru
     @echo "✓ Release artifact for windows/{{ ARCH }} built successfully"
 
-# Assemble the release layout: bin/neru, share/man/man1 and, on macOS, an
-# ad-hoc signed Neru.app. It is the exact tree a release zip unpacks to, so the
-# installer and CI's publish jobs both consume it. BIN defaults to `just build`
+# Assemble the release layout: bin/neru, share/man/man1 and, on macOS, a
+# signed Homekey.app (scripts/dist.sh says which identity). It is the exact
+# tree a release zip unpacks to, so CI's publish jobs consume it; on macOS the
+# upstream installer does not (it expects Neru.app). BIN defaults to `just build`
 # output; CI passes its cross-built binary plus the Info.plist versions. The
 # bodies live in scripts/dist.sh and scripts/dist.ps1 rather than a shebang
 # recipe, which needs cygpath on Windows; the Windows variant needs no Bash.
 # Usage: just dist [BIN] [OUT] [BUNDLE_VERSION] [SHORT_VERSION] [BUILD_ID]
 [unix]
-[doc('Assemble the release layout (bin, man, Neru.app on macOS) under build/dist.')]
+[doc('Assemble the release layout (bin, man, Homekey.app on macOS) in build/dist.')]
 dist BIN="" OUT="build/dist" BUNDLE_VERSION="" SHORT_VERSION="" BUILD_ID="":
     NERU_DIST_VERSION="{{ VERSION }}" bash scripts/dist.sh "{{ BIN }}" "{{ OUT }}" "{{ BUNDLE_VERSION }}" "{{ SHORT_VERSION }}" "{{ BUILD_ID }}"
 
@@ -220,7 +227,15 @@ dist BIN="" OUT="build/dist" BUNDLE_VERSION="" SHORT_VERSION="" BUILD_ID="":
 # `curl | bash` user runs (scripts/install.sh, or install.ps1 on Windows), so
 # a source install lands in the same places as a release. Pass -y to accept
 # every prompt (`just install -y`); other flags are the installer's own.
-[unix]
+# Homekey refuses on macOS, before building anything: the installer knows only
+# Neru.app, which dist no longer builds, and it would stop the running daemon
+# before finding that out. HOMEKEY.md has the manual steps.
+[macos]
+[doc('Refused on macOS: build with `just app`, install by hand (HOMEKEY.md).')]
+install *ARGS:
+    @echo "On macOS run 'just app' and install by hand (HOMEKEY.md)." >&2; exit 1
+
+[linux]
 [doc('Build and install from source via the release installer; -y auto-accepts.')]
 install *ARGS: build dist
     bash scripts/install.sh --from build/dist {{ ARGS }}
@@ -233,7 +248,15 @@ install *ARGS: build dist
 # Remove whatever `just install` or the curl installer put in place. Pass -y to
 # accept every prompt, and --purge to also remove your config and logs (they
 # are kept otherwise, so -y alone can never delete your config.toml).
-[unix]
+# Homekey refuses on macOS for the reason install does: the installer looks only
+# for Neru.app, so it would remove the PATH link and leave Homekey.app and its
+# login agent running.
+[macos]
+[doc('Refused on macOS: uninstall Homekey by hand (HOMEKEY.md).')]
+uninstall *ARGS:
+    @echo "On macOS uninstall Homekey by hand (HOMEKEY.md)." >&2; exit 1
+
+[linux]
 [doc('Undo `just install`; your config survives unless you pass --purge.')]
 uninstall *ARGS:
     bash scripts/install.sh --uninstall {{ ARGS }}
@@ -831,8 +854,9 @@ generate-icns SOURCE:
     rm -rf "$ICONSET"
     echo "✓ Generated resources/icon.icns"
 
-# Generate systray tray icon PNGs from source PNGs
-# Resizes to 44×44 pixels (22pt @2x retina for macOS menu bar)
+# Generate the embedded macOS menu bar template glyphs from source PNGs.
+# Resizes to 44×44 pixels (22pt @2x retina for macOS menu bar). Homekey's
+# sources come from macos/branding/make-tray-icons.swift.
 
 # Usage: just generate-tray-icons active.png disabled.png
 [doc('Generate the two 44x44 systray icons from source PNGs.')]
@@ -840,12 +864,11 @@ generate-tray-icons ACTIVE DISABLED:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "Generating tray icons..."
-    TRAY_DIR="internal/app/components/systray/resources"
-    mkdir -p "$TRAY_DIR"
-    sips -z 44 44 "{{ ACTIVE }}"   --out "$TRAY_DIR/tray-icon.png"          >/dev/null
-    sips -z 44 44 "{{ DISABLED }}" --out "$TRAY_DIR/tray-icon-disabled.png"  >/dev/null
-    echo "✓ Generated $TRAY_DIR/tray-icon.png (44×44, 22pt @2x)"
-    echo "✓ Generated $TRAY_DIR/tray-icon-disabled.png (44×44, 22pt @2x)"
+    TRAY_DIR="internal/adapter/systray/icon"
+    sips -z 44 44 "{{ ACTIVE }}"   --out "$TRAY_DIR/tray-icon-template.png"          >/dev/null
+    sips -z 44 44 "{{ DISABLED }}" --out "$TRAY_DIR/tray-icon-template-disabled.png" >/dev/null
+    echo "✓ Generated $TRAY_DIR/tray-icon-template.png (44×44, 22pt @2x)"
+    echo "✓ Generated $TRAY_DIR/tray-icon-template-disabled.png (44×44, 22pt @2x)"
 
 # Generate all icons from source PNGs
 

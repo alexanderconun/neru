@@ -7,7 +7,7 @@
 	<string>en</string>
 
 	<key>CFBundleDisplayName</key>
-	<string>Neru</string>
+	<string>Homekey</string>
 
 	<key>CFBundleIconFile</key>
 	<string>icon</string>
@@ -22,7 +22,7 @@
 	<string>6.0</string>
 
 	<key>CFBundleName</key>
-	<string>Neru</string>
+	<string>Homekey</string>
 
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
@@ -46,9 +46,9 @@
 	<true/>
 
 	<key>NSAccessibilityUsageDescription</key>
-	<string>Neru needs Accessibility access to inspect and interact with user interface elements for keyboard-driven navigation.</string>
+	<string>Homekey needs Accessibility access to inspect and interact with user interface elements for keyboard-driven navigation.</string>
 
 	<key>NSScreenCaptureUsageDescription</key>
-	<string>Neru may capture screen content for vision-based element detection to enhance navigation accuracy.</string>
+	<string>Homekey may capture screen content for vision-based element detection to enhance navigation accuracy.</string>
 </dict>
 </plist>

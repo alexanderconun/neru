@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 #
-# Assemble the release layout: bin/neru, share/man/man1 and, on macOS, an
-# ad-hoc signed Neru.app. It is the exact tree a release zip unpacks to, so
-# scripts/install.sh --from and CI's publish jobs both consume it.
+# Assemble the release layout: bin/neru, share/man/man1 and, on macOS, a signed
+# Homekey.app. It is the exact tree a release zip unpacks to, so CI's publish
+# jobs consume it (scripts/install.sh --from still expects upstream's Neru.app).
+#
+# macOS signs with $NERU_SIGN_IDENTITY, else the "Homekey Local Signing"
+# identity scripts/setup-signing.sh creates, else ad hoc.
 #
 #   scripts/dist.sh [BIN] [OUT] [BUNDLE_VERSION] [SHORT_VERSION] [BUILD_ID]
 #
@@ -51,7 +54,7 @@ if [ "$host" = macos ]; then
     fi
     [ -n "$bundle_version" ] || bundle_version="$short_version"
     [ -n "$build_id" ] || build_id="$version"
-    app="$out/Neru.app"
+    app="$out/Homekey.app"
     mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
     cp "$bin" "$app/Contents/MacOS/neru"
     chmod +x "$app/Contents/MacOS/neru"
@@ -62,11 +65,24 @@ if [ "$host" = macos ]; then
         -e "s/SHORT_VERSION/$short_version/g" \
         -e "s/BUILD_ID/$build_id/g" \
         resources/Info.plist.template >"$app/Contents/Info.plist"
-    # The settings window ships inside the app (`just build-settings`).
+    # A stable identity keeps the Accessibility grant across rebuilds: TCC keys
+    # an ad-hoc signature on its cdhash, which every build changes. No -v and
+    # no pipe: -v hides untrusted self-signed identities, and grep -q under
+    # pipefail can SIGPIPE security into reading a match as a miss.
+    sign="${NERU_SIGN_IDENTITY:-}"
+    if [ -z "$sign" ]; then
+        case "$(security find-identity -p codesigning 2>/dev/null || true)" in
+            *'"Homekey Local Signing"'*) sign="Homekey Local Signing" ;;
+        esac
+    fi
+    sign="${sign:--}"
+    # The settings window ships inside the app (`just build-settings`). Nested
+    # code is signed first, inside-out; --deep would stamp Neru's entitlements on it.
     if [ -d bin/NeruSettings.app ]; then
         mkdir -p "$app/Contents/Helpers"
         cp -R bin/NeruSettings.app "$app/Contents/Helpers/"
+        codesign --force --sign "$sign" --options runtime "$app/Contents/Helpers/NeruSettings.app"
     fi
-    codesign --force --deep --sign - --entitlements resources/Neru.entitlements --options runtime "$app"
+    codesign --force --sign "$sign" --entitlements resources/Neru.entitlements --options runtime "$app"
 fi
 echo "✓ Release layout assembled in $out"
