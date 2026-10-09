@@ -2,6 +2,9 @@ package systray
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"runtime"
 	"sync/atomic"
 
 	"github.com/atotto/clipboard"
@@ -68,6 +71,7 @@ type Component struct {
 	mGrid               ports.SystrayMenuItem
 	mRecursiveGrid      ports.SystrayMenuItem
 	mBisect             ports.SystrayMenuItem
+	mSettings           ports.SystrayMenuItem
 	mConfig             ports.SystrayMenuItem
 	mReloadConfig       ports.SystrayMenuItem
 	mOpenConfig         ports.SystrayMenuItem
@@ -207,6 +211,11 @@ func (c *Component) OnReady() {
 
 	c.tray.AddSeparator()
 
+	c.mSettings = c.tray.AddMenuItem("Settings…")
+	if runtime.GOOS != "darwin" {
+		c.mSettings.Hide()
+	}
+
 	c.mConfig = c.tray.AddMenuItem("Config")
 	c.mReloadConfig = c.mConfig.AddSubMenuItem("Reload")
 	c.mOpenConfig = c.mConfig.AddSubMenuItem("Open in Editor")
@@ -299,6 +308,8 @@ func (c *Component) handleEvents() {
 			c.handleReloadConfig()
 		case <-c.mOpenConfig.Clicked():
 			go c.handleOpenConfig()
+		case <-c.mSettings.Clicked():
+			go c.handleOpenSettings()
 		case <-c.mSourceCode.Clicked():
 			go func() {
 				err := platform.OpenExternal(c.ctx, "https://github.com/y3owk1n/neru")
@@ -423,6 +434,42 @@ func (c *Component) handleOpenConfig() {
 	if err != nil {
 		c.logger.Error("Failed to open config file", zap.Error(err))
 	}
+}
+
+// settingsAppName is the macOS settings window app, built by `just build-settings`.
+const settingsAppName = "NeruSettings.app"
+
+// handleOpenSettings launches the settings app installed next to the neru
+// binary, or in /Applications. Without one it falls back to the config file.
+func (c *Component) handleOpenSettings() {
+	candidates := []string{filepath.Join("/Applications", settingsAppName)}
+
+	exe, err := os.Executable()
+	if err == nil {
+		resolved, evalErr := filepath.EvalSymlinks(exe)
+		if evalErr == nil {
+			exe = resolved
+		}
+
+		candidates = append([]string{filepath.Join(filepath.Dir(exe), settingsAppName)}, candidates...)
+	}
+
+	for _, path := range candidates {
+		_, statErr := os.Stat(path)
+		if statErr != nil {
+			continue
+		}
+
+		openErr := platform.OpenExternal(c.ctx, path)
+		if openErr != nil {
+			c.logger.Error("Failed to open settings app", zap.Error(openErr))
+		}
+
+		return
+	}
+
+	c.notify("Settings app not found, opening the config file instead")
+	c.handleOpenConfig()
 }
 
 // handleReloadConfig reloads the configuration from disk.

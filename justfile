@@ -122,6 +122,26 @@ build-darwin:
     CGO_ENABLED=1 go build -ldflags="{{ LDFLAGS }}" -o bin/neru-darwin ./cmd/neru
     @echo "✓ Build complete: bin/neru-darwin"
 
+# Build the macOS settings window app next to bin/neru
+[doc('Build bin/NeruSettings.app, the SwiftUI settings window opened from the menu bar.')]
+build-settings:
+    @echo "Building NeruSettings.app..."
+    rm -rf bin/NeruSettings.app
+    mkdir -p bin/NeruSettings.app/Contents/MacOS bin/NeruSettings.app/Contents/Resources
+    swiftc -O -swift-version 5 -parse-as-library -target "$(uname -m)-apple-macos14.0" \
+        -o bin/NeruSettings.app/Contents/MacOS/NeruSettings macos/NeruSettings/Sources/*.swift
+    cp macos/NeruSettings/Info.plist bin/NeruSettings.app/Contents/
+    cp resources/icon.icns bin/NeruSettings.app/Contents/Resources/
+    codesign --force --sign - bin/NeruSettings.app
+    @echo "✓ Build complete: bin/NeruSettings.app"
+
+# Self-check the settings app's [hotkeys] rewrite
+[doc('Run the NeruSettings hotkey-rewrite self-check.')]
+check-settings:
+    mkdir -p bin
+    swiftc -swift-version 5 -o bin/check-settings macos/NeruSettings/Sources/Neru.swift macos/NeruSettings/Tests/main.swift
+    ./bin/check-settings
+
 # Build with optimizations for release
 [doc('Build an optimized, trimpath release binary into bin/neru.')]
 release:
