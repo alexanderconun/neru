@@ -64,7 +64,9 @@ struct ClickingPage: View {
             }
             Section("While searching") {
                 keyRow("Type", "Narrow the labels to matching text")
-                keyRow(Shortcut.display("Return"), "Pick the first match")
+                // With an action and several matches, Return only closes the search (confirmHintSearch).
+                keyRow(Shortcut.display("Return"), launchers.autoClick ? "Click the only match, or close search to type a label"
+                    : "Go to the first match")
                 keyRow(Shortcut.display("Escape"), "Cancel the search")
             }
         }

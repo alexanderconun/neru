@@ -44,11 +44,17 @@ func runLauncherTests() {
         "Primary+Shift+G": ["grid"],
         "Primary+Shift+S": ["scroll"],
     ]
-    let (read, bound) = Neru.launchers(in: dump)
+    let read = Neru.launchers(in: dump)
     assert(read == Neru.Launchers(combos: [.main: "Primary+Shift+Space", .search: "Ctrl+Alt+S", .rightClick: "Ctrl+Alt+R"],
                                   autoClick: true, chain: true, hideLabels: true))
-    assert(Set(bound) == ["Primary+Shift+Space", "Ctrl+Alt+S", "Ctrl+Alt+R"])
-    assert(Neru.launchers(in: ["Primary+Shift+Space": ["hints"]]).set.autoClick == false)
+    assert(Neru.launchers(in: ["Primary+Shift+Space": ["hints"]]).autoClick == false)
+
+    // A toggle with no launcher to carry it writes nothing; a real change does.
+    assert(Neru.applyLaunchers(Neru.Launchers(autoClick: true), to: [:]) == nil)
+    assert(Neru.applyLaunchers(Neru.Launchers(combos: [.rightClick: "Ctrl+R"], autoClick: true), to: ["Ctrl+R": ["hints right_click"]]) == nil)
+    var chained = read
+    chained.chain = false
+    assert(Neru.applyLaunchers(chained, to: dump)?["Primary+Shift+Space"] == ["hints --action left_click"])
 
     // Conflicts: anything else bound refuses, a role's own combo does not.
     assert(Neru.launcherConflict("Primary+Shift+G", for: .search, in: dump) == "⌘⇧G is already used by \"grid\". Change or clear that one first.")
@@ -56,7 +62,12 @@ func runLauncherTests() {
     assert(Neru.launcherConflict("Ctrl+Alt+H", for: .main, in: dump)?.contains("hints --role AXButton") == true)
     assert(Neru.launcherConflict("ctrl+alt+r", for: .rightClick, in: dump) == nil)
     assert(Neru.launcherConflict("Cmd+Shift+J", for: .main, in: dump) == nil)
-    assert(Neru.launcherConflict("Cmd+Shift+Space", for: .search, in: dump) != nil) // Primary is Cmd
+    assert(Neru.launcherConflict("Cmd+Shift+Space", for: .search, in: dump) == "⌘⇧Space is already used by the clicking shortcut. Change that one first.")
+    // Chords compare as the loader does: modifier order and aliases do not matter.
+    assert(Neru.launcherConflict("Primary+Alt+H", for: .search, in: ["Alt+Cmd+H": ["grid"]]) != nil)
+    assert(Neru.launcherConflict("Primary+Shift+K", for: .search, in: ["Shift+Command+K": ["grid"]]) != nil)
+    assert(Neru.comboKey("Option+Control+Backspace") == Neru.comboKey("Ctrl+Alt+Delete"))
+    assert(Neru.comboKey("Shift+Primary+Enter") == "cmd+shift+return" && Neru.comboKey("Primary+=") == "cmd+=")
 
     // The full rewrite: main moved, search added, right-click cleared.
     let toml = """
@@ -70,11 +81,11 @@ func runLauncherTests() {
     [hints]
     hint_characters = "asdf"
     """
-    let old = Neru.launchers(in: dump.filter { $0.key != "Ctrl+Alt+S" })
-    var next = old.set
+    let old = dump.filter { $0.key != "Ctrl+Alt+S" }
+    var next = Neru.launchers(in: old)
     next.combos = [.main: "Primary+Shift+J", .search: "Ctrl+Alt+S"]
     next.chain = false
-    let out = Neru.rewriteLaunchers(toml, bound: old.bound, to: next)
+    let out = Neru.rewriteLaunchers(toml, in: old, to: next)
     assert(out == """
     [hotkeys]
     "Primary+Shift+J" = "hints --action left_click"
@@ -89,12 +100,13 @@ func runLauncherTests() {
 
     // A default left in place is not disabled; the main line is written even
     // when only the default bound it (any hints line drops that default).
-    let fresh = Neru.rewriteLaunchers("[general]\n", bound: ["Primary+Shift+Space"],
+    let defaults = Neru.defaultHotkeys.mapValues { [$0] }
+    let fresh = Neru.rewriteLaunchers("[general]\n", in: defaults,
                                       to: Neru.Launchers(combos: [.main: "Primary+Shift+Space", .doubleClick: "Ctrl+Alt+D"]))
     assert(fresh == "[general]\n\n[hotkeys]\n\"Primary+Shift+Space\" = \"hints\"\n\"Ctrl+Alt+D\" = \"hints --action left_click,left_click\"", fresh)
 
     // A freed default that another role takes is not disabled.
-    let swap = Neru.rewriteLaunchers(out, bound: ["Primary+Shift+J", "Ctrl+Alt+S"],
+    let swap = Neru.rewriteLaunchers(out, in: ["Primary+Shift+J": ["hints -a left_click"], "Ctrl+Alt+S": ["hints -a left_click -s"]],
                                      to: Neru.Launchers(combos: [.main: "Primary+Shift+J", .search: "Primary+Shift+Space"]))
     assert(!swap.contains("__disabled__") && swap.contains("\"Primary+Shift+Space\" = \"hints --search\""), swap)
     assert(!swap.contains("Ctrl+Alt+S"), swap)
@@ -102,11 +114,62 @@ func runLauncherTests() {
     // Clearing the last launcher when there is no main one keeps the default
     // main launcher away and never leaves [hotkeys] empty (that unbinds everything).
     let searchOnly = "[hotkeys]\n\"Ctrl+S\" = \"hints --search\"\n"
-    let cleared = Neru.rewriteLaunchers(searchOnly, bound: ["Ctrl+S"], to: Neru.Launchers())
+    let searchDump = defaults.filter { $0.value != ["hints"] }.merging(["Ctrl+S": ["hints --search"]]) { $1 }
+    let cleared = Neru.rewriteLaunchers(searchOnly, in: searchDump, to: Neru.Launchers())
     assert(cleared == "[hotkeys]\n\"Primary+Shift+Space\" = \"__disabled__\"\n", cleared)
-    // …but leaves a chord the file already binds alone.
-    let kept = Neru.rewriteLaunchers(searchOnly + "\"Primary+Shift+Space\" = \"grid\"\n", bound: ["Ctrl+S"], to: Neru.Launchers())
+    // …but leaves a chord [hotkeys] already binds alone.
+    let kept = Neru.rewriteLaunchers(searchOnly + "\"Primary+Shift+Space\" = \"grid\"\n",
+                                     in: searchDump.merging(["Primary+Shift+Space": ["grid"]]) { $1 }, to: Neru.Launchers())
     assert(kept == "[hotkeys]\n\"Primary+Shift+Space\" = \"grid\"\n", kept)
+    // The same chord in [hints.hotkeys] is not a global binding.
+    let modeTable = Neru.rewriteLaunchers(searchOnly + "\n[hints.hotkeys]\n\"Primary+Shift+Space\" = \"idle\"\n", in: searchDump, to: Neru.Launchers())
+    assert(modeTable.hasPrefix("[hotkeys]\n\"Primary+Shift+Space\" = \"__disabled__\"\n"), modeTable)
+
+    // An empty [hotkeys] table (nothing bound) stays all-off when a launcher is added.
+    let skhd = Neru.rewriteLaunchers("[hotkeys]\n\n[hints]\n", in: [:], to: Neru.Launchers(combos: [.search: "Ctrl+S"]))
+    assert(skhd == """
+    [hotkeys]
+    "Ctrl+S" = "hints --search"
+    "Primary+Shift+B" = "__disabled__"
+    "Primary+Shift+C" = "__disabled__"
+    "Primary+Shift+G" = "__disabled__"
+    "Primary+Shift+S" = "__disabled__"
+    "Primary+Shift+Space" = "__disabled__"
+
+    [hints]
+
+    """, skhd)
+
+    // A role bound twice by hand: only the combo shown is managed, the other stays.
+    let twice = "[hotkeys]\n\"Primary+Shift+Space\" = \"hints\"\n\"Primary+Shift+K\" = \"hints --action left_click\"\n"
+    let twiceDump = defaults.merging(["Primary+Shift+K": ["hints --action left_click"]]) { $1 }
+    var addRight = Neru.launchers(in: twiceDump)
+    assert(addRight.combos[.main] == "Primary+Shift+K" && addRight.autoClick)
+    addRight.combos[.rightClick] = "Ctrl+Alt+R"
+    let both = Neru.rewriteLaunchers(twice, in: twiceDump, to: addRight)
+    assert(both == """
+    [hotkeys]
+    "Primary+Shift+K" = "hints --action left_click"
+    "Ctrl+Alt+R" = "hints --action right_click"
+    "Primary+Shift+Space" = "hints"
+
+    """, both)
+
+    // A stale line in another modifier order is replaced, not duplicated.
+    let reorder = Neru.rewriteLaunchers(searchOnly + "\"Shift+Primary+Space\" = \"__disabled__\"\n", in: searchDump,
+                                        to: Neru.Launchers(combos: [.main: "Primary+Shift+Space", .search: "Ctrl+S"]))
+    assert(reorder == "[hotkeys]\n\"Primary+Shift+Space\" = \"hints\"\n\"Ctrl+S\" = \"hints --search\"\n", reorder)
+
+    // A key holding "=" is still found, so clearing it works.
+    let equals = Neru.rewriteLaunchers("[hotkeys]\n\"Primary+Shift+Space\" = \"hints\"\n\"Primary+=\" = \"hints --search\"\n",
+                                       in: defaults.merging(["Primary+=": ["hints --search"]]) { $1 },
+                                       to: Neru.Launchers(combos: [.main: "Primary+Shift+Space"]))
+    assert(equals == "[hotkeys]\n\"Primary+Shift+Space\" = \"hints\"\n", equals)
+
+    // A launcher written as a multi-line array is removed whole.
+    let multi = Neru.rewriteLaunchers("[hotkeys]\n\"Primary+Shift+Space\" = [\n  \"hints\", # move only\n]\n\n[hints]\n", in: defaults,
+                                      to: Neru.Launchers(combos: [.main: "Primary+Shift+Space"], autoClick: true))
+    assert(multi == "[hotkeys]\n\"Primary+Shift+Space\" = \"hints --action left_click\"\n\n[hints]\n", multi)
 
     // Cheat sheet: known commands in words, the rest as written, same action shares a row.
     assert(Neru.describeModeKey(["action cycle_hint --backward"]) == "Previous label")

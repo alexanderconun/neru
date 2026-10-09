@@ -13,7 +13,8 @@ extension Neru {
     /// text, write it, reload. On failure the file is left untouched and the
     /// error is shown. The caller updates the window first with `setLocal`.
     func editConfigText(_ transform: @escaping (String) -> String) {
-        guard !configPath.isEmpty else { error = "\(Self.appName) is running without a config file"; return }
+        // Still reloads, so the caller's setLocal does not stay on screen.
+        guard !configPath.isEmpty else { background { "\(Self.appName) is running without a config file" }; return }
         let path = configPath
         error = nil
         background {
@@ -66,9 +67,12 @@ extension Neru {
         }
         let start = headerIndex! + 1
         let end = all[start...].firstIndex { $0.trimmingCharacters(in: .whitespaces).hasPrefix("[") } ?? all.count
-        var section = all[start..<end].filter { line in
-            guard let key = tomlKey(line) else { return true }
-            return !keys.contains(key)
+        var section: [String] = []
+        var open = 0 // brackets a removed key's multi-line array still has open
+        for line in all[start..<end] {
+            if open > 0 { open += bracketBalance(line); continue }
+            if let key = tomlKey(line), keys.contains(key) { open = bracketBalance(line); continue }
+            section.append(line)
         }
         section.insert(contentsOf: lines, at: 0)
         all.replaceSubrange(start..<end, with: section)
@@ -95,10 +99,41 @@ extension Neru {
     }
 
     /// The key of a `key = value` line, unquoted, or nil for anything else.
+    /// A quoted key is read to its closing quote: `"Primary+="` holds an `=`.
     static func tomlKey(_ line: String) -> String? {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.hasPrefix("#"), !trimmed.hasPrefix("["), let eq = trimmed.firstIndex(of: "=") else { return nil }
-        return trimmed[..<eq].trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+        guard let quote = trimmed.first, quote == "\"" || quote == "'" else {
+            guard !trimmed.hasPrefix("#"), !trimmed.hasPrefix("["), let eq = trimmed.firstIndex(of: "=") else { return nil }
+            return trimmed[..<eq].trimmingCharacters(in: .whitespaces)
+        }
+        var key = ""
+        var rest = trimmed.dropFirst()
+        while let char = rest.popFirst() {
+            if char == quote { return rest.drop(while: \.isWhitespace).first == "=" ? key : nil }
+            // ponytail: \n, \t and \u escapes read as the bare letter; no hotkey has one.
+            key.append(char == "\\" && quote == "\"" ? rest.popFirst() ?? char : char)
+        }
+        return nil
+    }
+
+    /// `[` minus `]` on a line, outside strings and comments: above zero,
+    /// the line opens a multi-line array.
+    static func bracketBalance(_ line: String) -> Int {
+        var balance = 0
+        var quote: Character?
+        var escaped = false
+        for char in line {
+            if let open = quote {
+                if escaped { escaped = false } else if char == "\\" && open == "\"" { escaped = true } else if char == open { quote = nil }
+            } else if char == "\"" || char == "'" {
+                quote = char
+            } else if char == "#" {
+                break
+            } else if char == "[" || char == "]" {
+                balance += char == "[" ? 1 : -1
+            }
+        }
+        return balance
     }
 
     /// A `"key" = "value"` line with both sides escaped.
