@@ -145,7 +145,12 @@ func TestWaitingForAccessibility_RefusesEveryCommandThroughTheHandshake(t *testi
 
 		if response.Success || response.Code != CodeAccessibilityDenied ||
 			response.Version != BuildVersion() {
-			t.Errorf("Send(%s) = %+v, want a versioned %s refusal", action, response, CodeAccessibilityDenied)
+			t.Errorf(
+				"Send(%s) = %+v, want a versioned %s refusal",
+				action,
+				response,
+				CodeAccessibilityDenied,
+			)
 		}
 	}
 }

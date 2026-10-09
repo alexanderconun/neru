@@ -12,6 +12,7 @@ import (
 
 var (
 	errDaemonUnreachable = errors.New("daemon unreachable")
+	errDaemonRefused     = errors.New("daemon refused the health check")
 	// errClickableRolesUnusable marks a configuration that loads but selects no
 	// accessibility role on this platform, so hints would find nothing.
 	errClickableRolesUnusable = errors.New("no clickable roles apply on this platform")
@@ -87,6 +88,11 @@ can use it to verify accessibility permissions before launching.`,
 			return &silentError{err: errDaemonUnreachable}
 		}
 
+		err = printDaemonRefusal(cmd, ipcResponse)
+		if err != nil {
+			return err
+		}
+
 		err = formatter.PrintHealth(cmd, ipcResponse.Success, ipcResponse.Data)
 
 		if errors.Is(err, cliutil.ErrUnhealthy) {
@@ -106,6 +112,19 @@ can use it to verify accessibility permissions before launching.`,
 
 		return nil
 	},
+}
+
+// printDaemonRefusal reports a health reply that carries no report, only the
+// daemon's reason — waiting on Accessibility, or a different build — which the
+// report printer has nowhere to put. A reply with a report returns nil.
+func printDaemonRefusal(cmd *cobra.Command, response ipc.Response) error {
+	if response.Success || response.Data != nil {
+		return nil
+	}
+
+	cmd.Printf("  ❌ %-24s %s (code: %s)\n", "daemon", response.Message, response.Code)
+
+	return &silentError{err: errDaemonRefused}
 }
 
 func init() {
