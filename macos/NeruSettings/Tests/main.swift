@@ -38,3 +38,9 @@ if CommandLine.arguments.count > 1 {
     }
 }
 print("ok")
+
+// Toggling automatic click swaps the command on the same combo.
+let auto = Neru.rebind(base, mode: Neru.autoClickHints, to: "Primary+Shift+Space", replacing: [])
+assert(auto.contains("\"Primary+Shift+Space\" = \"hints --action left_click\""))
+assert(!auto.contains("\"Primary+Shift+Space\" = \"hints\"") && !auto.contains("__disabled__"))
+print("auto-click ok")

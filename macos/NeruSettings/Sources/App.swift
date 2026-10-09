@@ -129,7 +129,11 @@ struct ClickingPage: View {
     var body: some View {
         Form {
             Section("Clicking") {
-                LabeledContent("Shortcut") { ShortcutRecorder(mode: "hints") }
+                LabeledContent("Shortcut") { ShortcutRecorder(mode: neru.hintsCommand) }
+                Toggle(isOn: Binding(get: { neru.hintsCommand == Neru.autoClickHints }, set: neru.setAutoClick)) {
+                    HelpLabel("Automatic click", help: "Click as soon as a label is typed. Off, typing a label only moves the mouse there; Shift+L clicks.")
+                }
+                .toggleStyle(.switch)
                 SettingToggle(title: "Mission Control", key: "hints.detect_mission_control",
                               help: "Show labels on windows and desktops while Mission Control is open.")
                 SettingToggle(title: "Menu bar labels", key: "hints.include_menubar_hints",
