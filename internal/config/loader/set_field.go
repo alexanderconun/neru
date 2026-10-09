@@ -268,23 +268,15 @@ func parseColorValue(value string) config.Color {
 	return config.Color{Light: value, Dark: value}
 }
 
-// ValidateConfigSetField validates a config path is settable and value is valid
-// by performing the mutation on a throwaway copy. Used by the CLI to validate
-// before sending to the daemon.
+// ValidateConfigSetField checks that a config path is settable and the value
+// parses for its type, by performing the mutation on a throwaway copy. Used by
+// the CLI before sending to the daemon. Whole-config validation is the
+// daemon's: it validates against the user's configuration, and running
+// Validate here against the defaults refused every cross-field option whose
+// partner the user had already set (hints.detect_mission_control with
+// hints.include_dock_hints on).
 func ValidateConfigSetField(path, value string) error {
-	cfg := config.DefaultConfig()
-
-	err := SetField(cfg, path, value)
-	if err != nil {
-		return err
-	}
-
-	err = cfg.Validate()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return SetField(config.DefaultConfig(), path, value)
 }
 
 // unknownField is returned by ConfigFieldType when the path cannot be resolved.

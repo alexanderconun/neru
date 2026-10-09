@@ -268,6 +268,15 @@ func TestValidateConfigSetField_Valid(t *testing.T) {
 	}
 }
 
+func TestValidateConfigSetField_CrossFieldRuleLeftToDaemon(t *testing.T) {
+	// Needs hints.include_dock_hints, which is off in the defaults but may be
+	// on in the user's config; only the daemon can tell.
+	err := loader.ValidateConfigSetField("hints.detect_mission_control", "true")
+	if err != nil {
+		t.Fatalf("ValidateConfigSetField() unexpected error: %v", err)
+	}
+}
+
 func TestValidateConfigSetField_InvalidPath(t *testing.T) {
 	err := loader.ValidateConfigSetField("hints.nonexistent", "value")
 	if err == nil {
