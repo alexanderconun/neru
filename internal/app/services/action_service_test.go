@@ -625,6 +625,9 @@ func TestPerformActionAtPoint_PlaysFeedbackSounds(t *testing.T) {
 		{"disabled plays nothing", false, leftClickAction, nil, nil},
 		{"a non-click plays nothing", true, "left_mouse_down", nil, nil},
 		{"a failed click plays the warning", true, leftClickAction, postFailed, []ports.Sound{ports.SoundWarning}},
+		// Any failed action warns, not only a click: a hint whose move_mouse
+		// or button press failed is just as silent to the user otherwise.
+		{"a failed non-click plays the warning", true, "left_mouse_down", postFailed, []ports.Sound{ports.SoundWarning}},
 		{"a failure while disabled plays nothing", false, leftClickAction, postFailed, nil},
 	}
 
