@@ -11,7 +11,7 @@ func DocsURL(path, version string) string {
 		tag = "main"
 	}
 
-	return "https://github.com/y3owk1n/neru/blob/" + tag + "/" + path
+	return RepoURL + "/blob/" + tag + "/" + path
 }
 
 func extractDocsTag(version string) string {

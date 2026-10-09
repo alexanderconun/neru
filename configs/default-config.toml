@@ -384,7 +384,7 @@ end_opacity = 0.0
 easing = "ease_out"                         # linear, ease_in, ease_out, ease_in_out
 
 # Sound effects (macOS only)
-# See https://github.com/y3owk1n/neru/blob/main/docs/reference/configuration.md#sound
+# See https://github.com/alexanderconun/neru/blob/main/docs/reference/configuration.md#sound
 [sound]
 enabled = false                             # Click after a click, warning on a failure
 volume = 50                                 # 0-100

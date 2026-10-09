@@ -317,7 +317,7 @@ func (c *Component) handleEvents() {
 			go c.handleOpenSettings()
 		case <-c.mSourceCode.Clicked():
 			go func() {
-				err := platform.OpenExternal(c.ctx, "https://github.com/y3owk1n/neru")
+				err := platform.OpenExternal(c.ctx, buildinfo.RepoURL)
 				if err != nil {
 					c.logger.Error("Failed to open repository", zap.Error(err))
 				}
@@ -346,7 +346,7 @@ func (c *Component) handleEvents() {
 			go func() {
 				err := platform.OpenExternal(
 					c.ctx,
-					"https://github.com/y3owk1n/neru/issues/new?template=feature_request.yml",
+					buildinfo.RepoURL+"/issues/new?template=feature_request.yml",
 				)
 				if err != nil {
 					c.logger.Error("Failed to open feature request", zap.Error(err))
@@ -356,7 +356,7 @@ func (c *Component) handleEvents() {
 			go func() {
 				err := platform.OpenExternal(
 					c.ctx,
-					"https://github.com/y3owk1n/neru/issues/new?template=bug_report.yml",
+					buildinfo.RepoURL+"/issues/new?template=bug_report.yml",
 				)
 				if err != nil {
 					c.logger.Error("Failed to open bug report", zap.Error(err))
@@ -364,7 +364,7 @@ func (c *Component) handleEvents() {
 			}()
 		case <-c.mDiscuss.Clicked():
 			go func() {
-				err := platform.OpenExternal(c.ctx, "https://github.com/y3owk1n/neru/discussions")
+				err := platform.OpenExternal(c.ctx, buildinfo.RepoURL+"/discussions")
 				if err != nil {
 					c.logger.Error("Failed to open community discussion", zap.Error(err))
 				}
