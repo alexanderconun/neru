@@ -24,6 +24,7 @@ type ActionService struct {
 
 	configMu sync.RWMutex
 	config   config.MouseActionConfig
+	sound    config.SoundConfig
 	logger   *zap.Logger
 }
 
@@ -38,9 +39,12 @@ func NewActionService(
 		logger = zap.NewNop()
 	}
 
+	defaults := config.DefaultConfig()
+
 	return &ActionService{
 		BaseService: NewBaseService(accessibility, overlay, system),
-		config:      config.DefaultConfig().MouseAction,
+		config:      defaults.MouseAction,
+		sound:       defaults.Sound,
 		logger:      logger.Named("service.action"),
 	}
 }
@@ -51,6 +55,21 @@ func (s *ActionService) UpdateConfig(cfg config.MouseActionConfig) {
 	defer s.configMu.Unlock()
 
 	s.config = cfg
+}
+
+// UpdateSoundConfig updates the click and warning sound settings.
+func (s *ActionService) UpdateSoundConfig(cfg config.SoundConfig) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+
+	s.sound = cfg
+}
+
+// PlayWarningSound plays the warning sound, for a failure the user would
+// otherwise see only as nothing happening. It never blocks, so a mode may call
+// it under its lock.
+func (s *ActionService) PlayWarningSound() {
+	s.playSound(ports.SoundWarning)
 }
 
 // ExecuteAction performs the specified action on the given element.
@@ -94,10 +113,16 @@ func (s *ActionService) PerformActionAtPoint(
 
 	performActionErr := s.accessibility.PerformActionAtPoint(ctx, actionType, point, modifiers)
 	if performActionErr != nil {
+		s.playSound(ports.SoundWarning)
+
 		return derrors.WrapActionFailed(performActionErr, actionType.String()+" at point")
 	}
 
 	s.drawMouseActionIndicator(point, actionType)
+
+	if actionType.IsClick() {
+		s.playSound(ports.SoundClick)
+	}
 
 	return nil
 }
@@ -445,6 +470,22 @@ func (s *ActionService) drawMouseActionIndicator(point image.Point, actionType a
 	}
 
 	s.overlay.DrawMouseActionIndicator(point, style)
+}
+
+// playSound plays kind when sounds are on and the platform has a player
+// (ports.SoundPlayer); everywhere else it is silent.
+func (s *ActionService) playSound(kind ports.Sound) {
+	s.configMu.RLock()
+	cfg := s.sound
+	s.configMu.RUnlock()
+
+	if !cfg.Enabled {
+		return
+	}
+
+	if player, ok := s.system.(ports.SoundPlayer); ok {
+		player.PlaySound(kind, float64(cfg.Volume)/100) //nolint:mnd // percent to 0..1
+	}
 }
 
 func (s *ActionService) mouseActionConfig() config.MouseActionConfig {

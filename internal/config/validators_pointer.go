@@ -258,3 +258,12 @@ func (c *Config) ValidateMouseAction() error {
 
 	return nil
 }
+
+// ValidateSound validates the feedback sound settings.
+func (c *Config) ValidateSound() error {
+	if c.Sound.Volume < 0 || c.Sound.Volume > 100 {
+		return derrors.New(derrors.CodeInvalidConfig, "sound.volume must be between 0 and 100")
+	}
+
+	return nil
+}

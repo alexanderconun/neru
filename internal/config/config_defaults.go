@@ -225,6 +225,8 @@ const (
 	DefaultVirtualPointerFontSize = 8
 	// DefaultVirtualPointerFontFamily is the default font family for the virtual pointer char.
 	DefaultVirtualPointerFontFamily = ""
+	// DefaultSoundVolume is the default feedback sound volume, in percent.
+	DefaultSoundVolume = 50
 	// DefaultMouseActionIndicatorSize is the default mouse action indicator diameter in points.
 	DefaultMouseActionIndicatorSize = 36
 	// DefaultMouseActionIndicatorBorderWidth is the default mouse action indicator border width.
@@ -309,6 +311,7 @@ func newDefaultConfig() *Config {
 		Bisect:          defaultBisect(),
 		VirtualPointer:  defaultVirtualPointer(),
 		MouseAction:     defaultMouseAction(),
+		Sound:           defaultSound(),
 		ModeIndicator:   defaultModeIndicator(),
 		StickyModifiers: defaultStickyModifiers(),
 		MonitorSelect:   defaultMonitorSelect(),
@@ -860,6 +863,15 @@ func defaultHeldRepeat() HeldRepeatConfig {
 		AccelRampMs:        DefaultHeldRepeatAccelRampMs,
 		AccelMaxMultiplier: DefaultHeldRepeatAccelMaxMultiplier,
 		AccelTargets:       []string{string(action.NameMoveMouseRelative)},
+	}
+}
+
+// defaultSound keeps Neru silent until asked: a sound on every click is a
+// taste, not a default.
+func defaultSound() SoundConfig {
+	return SoundConfig{
+		Enabled: false,
+		Volume:  DefaultSoundVolume,
 	}
 }
 

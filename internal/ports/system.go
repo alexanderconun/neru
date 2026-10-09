@@ -225,6 +225,29 @@ type InstantCursorMover interface {
 	MoveCursorInstantly(ctx context.Context, point image.Point) error
 }
 
+// Sound is a feedback sound a SoundPlayer can play.
+type Sound int
+
+const (
+	// SoundClick confirms that a click landed.
+	SoundClick Sound = iota
+	// SoundWarning says an action or an activation failed, which would
+	// otherwise look like nothing happening.
+	SoundWarning
+)
+
+// SoundPlayer is an optional SystemPort extension that plays a feedback sound.
+// It is implemented by the darwin adapter (NSSound). A platform without it
+// stays silent, and silence is the whole fallback.
+//
+// Callers may hold the mode handler's lock, so PlaySound must return at once:
+// it never blocks, never waits for the sound and never calls back.
+type SoundPlayer interface {
+	// PlaySound starts kind at volume (0..1). A sound that is already playing
+	// restarts, so rapid clicks each get one.
+	PlaySound(kind Sound, volume float64)
+}
+
 // Screen is one connected display: the name the platform shows the user for
 // it and its bounds in global top-left coordinates.
 type Screen struct {

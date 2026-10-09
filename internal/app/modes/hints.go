@@ -218,6 +218,7 @@ func (h *handlerState) activateHintModeInternal(activation modecmd.Activation) {
 			zap.String("action", actionString),
 		)
 
+		h.actionService.PlayWarningSound()
 		h.abandonHintActivation(isRefresh)
 
 		return
@@ -238,6 +239,7 @@ func (h *handlerState) activateHintModeInternal(activation modecmd.Activation) {
 	if len(domainHints) == 0 {
 		h.logger.Warn("No hints generated for action", zap.String("action", actionString))
 
+		h.actionService.PlayWarningSound()
 		h.abandonHintActivation(isRefresh)
 
 		return

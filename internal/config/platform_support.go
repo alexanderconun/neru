@@ -32,6 +32,8 @@ const (
 		"never consults it"
 	noteGridPrewarm = "only the darwin grid overlay prewarms its layers; the other backends " +
 		"draw on demand"
+	noteSound = "the click and warning sounds play through NSSound; Linux and Windows " +
+		"have no sound player yet and stay silent"
 )
 
 // captureScopeOptions are the paths for capture_scope, which shadows the hints
@@ -134,6 +136,11 @@ func PlatformSupport() parity.Declaration {
 
 		parity.On(parity.KindOption, darwinOnly, noteGridPrewarm,
 			"grid.prewarm_enabled",
+		),
+
+		parity.On(parity.KindOption, darwinOnly, noteSound,
+			"sound.enabled",
+			"sound.volume",
 		),
 
 		parity.On(parity.KindOption, darwinAndLinux, noteVisionConfidence,

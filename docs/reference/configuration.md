@@ -1000,6 +1000,26 @@ shape = "square"
 | `end_opacity`   | float  | `0.0`        | Ending opacity                                 |
 | `easing`        | string | `"ease_out"` | `linear`, `ease_in`, `ease_out`, `ease_in_out` |
 
+## [sound]
+
+Sound effects: a click sound after every successful click, and a warning sound
+when an action fails or hints mode finds nothing to label. macOS only; Linux
+and Windows stay silent.
+
+```toml
+[sound]
+enabled = true
+volume = 30
+```
+
+| Option    | Type | Default | Description                         |
+| --------- | ---- | ------- | ----------------------------------- |
+| `enabled` | bool | `false` | Play the click and warning sounds   |
+| `volume`  | int  | `50`    | Volume in percent, `0` to `100`     |
+
+The click is the system's Tink sound and the warning is Basso. A `volume`
+outside `0` to `100` is a config error.
+
 ## [mode_indicator]
 
 A floating label that follows the cursor and shows the current mode.
