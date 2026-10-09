@@ -236,20 +236,6 @@ final class Neru: ObservableObject {
         return bindings.filter { ($0.value as? [String]) == [mode] }.keys.sorted()
     }
 
-    static let autoClickHints = "hints --action left_click"
-
-    /// The command the hints shortcut runs: plain "hints" only moves the
-    /// cursor to the picked label, the --action form clicks it too.
-    var hintsCommand: String {
-        combos(for: Self.autoClickHints).isEmpty ? "hints" : Self.autoClickHints
-    }
-
-    func setAutoClick(_ on: Bool) {
-        let current = hintsCommand
-        let combo = combos(for: current).first ?? "Primary+Shift+Space"
-        setShortcut(combo, for: on ? Self.autoClickHints : "hints")
-    }
-
     /// Rebinds `mode` to `combo` in the [hotkeys] table of config.toml.
     func setShortcut(_ combo: String, for mode: String) {
         let current = combos(for: mode)

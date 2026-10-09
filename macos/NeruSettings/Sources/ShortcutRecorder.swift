@@ -32,24 +32,50 @@ enum Shortcut {
         return (parts + [key]).joined(separator: "+")
     }
 
+    /// Mode tables spell keys in any case ("escape", "Shift+Tab").
     static func display(_ combo: String) -> String {
-        let symbols = ["Primary": "⌘", "Cmd": "⌘", "Ctrl": "⌃", "Alt": "⌥", "Shift": "⇧"]
-        return combo.split(separator: "+").map { symbols[String($0)] ?? String($0) }.joined()
+        let symbols = ["primary": "⌘", "cmd": "⌘", "ctrl": "⌃", "alt": "⌥", "shift": "⇧",
+                       "up": "↑", "down": "↓", "left": "←", "right": "→", "escape": "⎋",
+                       "tab": "⇥", "return": "↩", "enter": "↩", "backspace": "⌫", "delete": "⌫"]
+        return combo.split(separator: "+").map { symbols[$0.lowercased()] ?? String($0) }.joined()
     }
 }
 
+/// Records a global shortcut. `ShortcutRecorder(mode:)` binds a mode command
+/// directly; the `combo:` form leaves the writing to `onRecord` and shows a
+/// clear button when `onClear` is given and a combo is set.
 struct ShortcutRecorder: View {
     @EnvironmentObject var neru: Neru
-    let mode: String
+    private var mode: String?
+    private var combo: String?
+    private var onRecord: ((String) -> Void)?
+    private var onClear: (() -> Void)?
     @State private var recording = false
     @State private var monitor: Any?
 
+    init(mode: String) { self.mode = mode }
+
+    init(combo: String?, onRecord: @escaping (String) -> Void, onClear: (() -> Void)? = nil) {
+        self.combo = combo
+        self.onRecord = onRecord
+        self.onClear = onClear
+    }
+
+    private var current: String? { mode.flatMap(neru.shortcut(for:)) ?? combo }
+
     var body: some View {
-        Button {
-            recording ? stop() : start()
-        } label: {
-            Text(recording ? "Type shortcut…" : neru.shortcut(for: mode).map(Shortcut.display) ?? "Record Shortcut")
-                .frame(minWidth: 120)
+        HStack(spacing: 4) {
+            Button {
+                recording ? stop() : start()
+            } label: {
+                Text(recording ? "Type shortcut…" : current.map(Shortcut.display) ?? "Record Shortcut")
+                    .frame(minWidth: 120)
+            }
+            if let onClear, current != nil, !recording {
+                Button(action: onClear) { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                    .buttonStyle(.borderless)
+                    .help("Remove this shortcut")
+            }
         }
         .onDisappear(perform: stop)
     }
@@ -61,7 +87,7 @@ struct ShortcutRecorder: View {
             if event.keyCode == 53 { stop(); return nil } // Escape cancels
             guard let combo = Shortcut.from(event) else { NSSound.beep(); return nil }
             stop()
-            neru.setShortcut(combo, for: mode)
+            if let mode { neru.setShortcut(combo, for: mode) } else { onRecord?(combo) }
             return nil
         }
     }
