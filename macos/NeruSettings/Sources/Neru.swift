@@ -3,18 +3,29 @@ import Carbon
 
 /// Talks to the running daemon through the `neru` CLI: `config dump` to read,
 /// `config set` to write (persisted to config.override.toml by the daemon).
-/// Hotkeys are the exception — `config set` cannot rename map keys, so they
-/// are edited in the [hotkeys] table of config.toml directly.
+/// Tables (hotkeys, per-app settings) are the exception — `config set` cannot
+/// write them, so they are edited in config.toml directly (ConfigText.swift).
+///
+/// Feature files extend this class; they reach the daemon only through
+/// `set`/`setMany`, `editConfigText` and `background`.
 final class Neru: ObservableObject {
     @Published var config: [String: Any] = [:]
     @Published var running = false
     @Published var notRunningReason = ""
+    /// The daemon is up but stuck at its Accessibility permission prompt.
+    @Published var needsAccessibility = false
     @Published var launchAtLogin = false
     @Published var version = ""
     @Published var error: String?
 
     private(set) var binary: String?
-    private var configPath = ""
+    private(set) var configPath = ""
+
+    /// The display name shown everywhere the app names itself.
+    static let appName = "Homekey"
+    /// The daemon's bundle identifier, kept from upstream so permissions,
+    /// the login item and the config folder carry over.
+    static let daemonBundleID = "com.y3owk1n.neru"
 
     // ponytail: mirrors the [hotkeys] defaults in internal/config/config_defaults.go;
     // needed to know when an old binding must be written as __disabled__.
@@ -39,7 +50,7 @@ final class Neru: ObservableObject {
         ]
         if let env = ProcessInfo.processInfo.environment["NERU_BIN"] { candidates.insert(env, at: 0) }
         candidates += [
-            "/Applications/Neru.app/Contents/MacOS/neru", "/opt/homebrew/bin/neru", "/usr/local/bin/neru", "\(home)/.local/bin/neru",
+            "/Applications/Homekey.app/Contents/MacOS/neru", "/Applications/Neru.app/Contents/MacOS/neru", "/opt/homebrew/bin/neru", "/usr/local/bin/neru", "\(home)/.local/bin/neru",
             "\(home)/go/bin/neru", "\(home)/.nix-profile/bin/neru", "/run/current-system/sw/bin/neru",
         ]
         let found = candidates.filter { FileManager.default.isExecutableFile(atPath: $0) }
@@ -68,11 +79,11 @@ final class Neru: ObservableObject {
 
     /// Every CLI call runs here, off the main thread and in order, so the
     /// window never waits on a process.
-    private let queue = DispatchQueue(label: "neru.settings.cli")
+    let queue = DispatchQueue(label: "neru.settings.cli")
 
     /// Runs `work` in the background, then reloads the config on the main thread.
     /// `work` returns an error message, or nil.
-    private func background(_ work: @escaping () -> String?) {
+    func background(_ work: @escaping () -> String?) {
         queue.async {
             let failure = work()
             let dump = self.run(["config", "dump"])
@@ -103,15 +114,43 @@ final class Neru: ObservableObject {
     private func apply(_ dump: (ok: Bool, out: String)) {
         running = dump.ok
         notRunningReason = dump.ok ? "" : dump.out
+        needsAccessibility = Self.isWaitingForAccessibility(dumpOK: dump.ok, output: dump.out,
+                                                            daemonAlive: Self.daemonProcessAlive())
         if dump.ok { config = Self.json(dump.out) ?? [:] }
     }
 
+    /// A daemon blocked at its permission prompt answers every command with
+    /// ERR_ACCESSIBILITY_DENIED. An older daemon has no socket at all while it
+    /// waits, so a live process that does not answer means the same.
+    static func isWaitingForAccessibility(dumpOK: Bool, output: String, daemonAlive: Bool) -> Bool {
+        if dumpOK { return false }
+        if output.contains("ERR_ACCESSIBILITY_DENIED") { return true }
+        return daemonAlive && output.contains("IPC_SERVER_NOT_RUNNING")
+    }
+
+    static func daemonProcessAlive() -> Bool {
+        NSWorkspace.shared.runningApplications.contains {
+            $0.bundleIdentifier == daemonBundleID || $0.executableURL?.lastPathComponent == "neru"
+        }
+    }
+
+    static let accessibilitySettingsURL =
+        URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+
+    /// Starts the daemon. A bundled daemon is opened through LaunchServices so
+    /// macOS asks for permission on behalf of the app, not of this window.
     func start() {
         guard let binary else { return }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: binary)
-        process.arguments = ["launch"]
-        try? process.run()
+        let bundle = URL(fileURLWithPath: binary).deletingLastPathComponent() // Contents/MacOS
+            .deletingLastPathComponent().deletingLastPathComponent()
+        if bundle.pathExtension == "app" {
+            NSWorkspace.shared.openApplication(at: bundle, configuration: .init())
+        } else {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: binary)
+            process.arguments = ["launch"]
+            try? process.run()
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.refresh() }
     }
 
@@ -133,7 +172,7 @@ final class Neru: ObservableObject {
 
     /// Writes into the local copy of the dump so the window shows a change
     /// before the daemon has it. The next dump replaces it with the truth.
-    private func setLocal(_ key: String, _ value: Any) {
+    func setLocal(_ key: String, _ value: Any) {
         func put(_ node: [String: Any], _ parts: ArraySlice<String>) -> [String: Any] {
             var node = node
             let head = Self.camel(parts.first!)
@@ -213,26 +252,12 @@ final class Neru: ObservableObject {
 
     /// Rebinds `mode` to `combo` in the [hotkeys] table of config.toml.
     func setShortcut(_ combo: String, for mode: String) {
-        guard !configPath.isEmpty else { error = "Neru is running without a config file"; return }
         let current = combos(for: mode)
         var bindings = value("hotkeys.bindings") as? [String: Any] ?? [:]
         for old in current { bindings[old] = nil }
         bindings[combo] = [mode]
         setLocal("hotkeys.bindings", bindings)
-
-        let path = configPath
-        error = nil
-        background {
-            let text = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
-            let updated = Self.rebind(text, mode: mode, to: combo, replacing: current)
-            do {
-                try updated.write(toFile: path, atomically: true, encoding: .utf8)
-            } catch {
-                return error.localizedDescription
-            }
-            let result = self.run(["config", "reload"])
-            return result.ok ? nil : result.out
-        }
+        editConfigText { Self.rebind($0, mode: mode, to: combo, replacing: current) }
     }
 
     /// Pauses Neru so its own hotkeys don't swallow the keys being recorded.
@@ -257,32 +282,10 @@ final class Neru: ObservableObject {
     /// `current` is every combo the daemon has bound to `mode` right now.
     static func rebind(_ toml: String, mode: String, to combo: String, replacing current: [String]) -> String {
         let old = current.filter { $0 != combo }
-        var lines = toml.components(separatedBy: "\n")
-
-        var header = lines.firstIndex { $0.trimmingCharacters(in: .whitespaces) == "[hotkeys]" }
-        if header == nil {
-            lines += ["", "[hotkeys]"]
-            header = lines.count - 1
-        }
-        let start = header! + 1
-        let end = lines[start...].firstIndex { $0.trimmingCharacters(in: .whitespaces).hasPrefix("[") } ?? lines.count
-
-        let replaced = Set(old + [combo])
-        var section = lines[start..<end].filter { line in
-            guard let key = tomlKey(line) else { return true }
-            return !replaced.contains(key)
-        }
         // A default left out of the file comes back, so it has to be disabled.
-        let disabled = old.filter { defaultHotkeys[$0] != nil }.map { "\"\($0)\" = \"__disabled__\"" }
-        section.insert(contentsOf: ["\"\(combo)\" = \"\(mode)\""] + disabled, at: 0)
-        lines.replaceSubrange(start..<end, with: section)
-        return lines.joined(separator: "\n")
-    }
-
-    static func tomlKey(_ line: String) -> String? {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.hasPrefix("#"), let eq = trimmed.firstIndex(of: "=") else { return nil }
-        return trimmed[..<eq].trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+        let disabled = old.filter { defaultHotkeys[$0] != nil }.map { tomlLine($0, "__disabled__") }
+        return editTable(toml, header: "hotkeys", removing: Set(old + [combo]),
+                         adding: [tomlLine(combo, mode)] + disabled)
     }
 
     static func camel(_ snake: String) -> String {

@@ -135,11 +135,11 @@ build-settings:
     codesign --force --sign - bin/NeruSettings.app
     @echo "✓ Build complete: bin/NeruSettings.app"
 
-# Self-check the settings app's [hotkeys] rewrite
-[doc('Run the NeruSettings hotkey-rewrite self-check.')]
+# Self-check the settings app's pure logic (config text edits, launchers, …)
+[doc('Run the NeruSettings self-checks.')]
 check-settings:
     mkdir -p bin
-    swiftc -swift-version 5 -o bin/check-settings macos/NeruSettings/Sources/Neru.swift macos/NeruSettings/Tests/main.swift
+    swiftc -swift-version 5 -o bin/check-settings $(ls macos/NeruSettings/Sources/*.swift | grep -v '/App.swift$') macos/NeruSettings/Tests/*.swift
     ./bin/check-settings
 
 # Build with optimizations for release
