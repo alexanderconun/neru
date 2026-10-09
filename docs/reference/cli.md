@@ -939,7 +939,7 @@ service, and `status` reports whether it is installed and running.
 
 | Platform | Definition | Notes |
 | -------- | ---------- | ----- |
-| macOS    | launchd plist in `~/Library/LaunchAgents` | `install` refuses if a plist exists, so run `uninstall` first. Stderr goes to `~/Library/Logs/neru/daemon.err.log`. |
+| macOS    | launchd plist in `~/Library/LaunchAgents` | `install` refuses if a plist exists, so run `uninstall` first. launchd restarts the daemon only after a failed exit, so a Quit from the menu bar stays quit. Stderr goes to `~/Library/Logs/neru/daemon.err.log`. |
 | Linux    | systemd user unit | See [Linux setup](../guide/linux.md#systemd-user-service). |
 | Windows  | Task Scheduler task `\Neru`, logon trigger | Runs `neru launch` as you with an interactive token, restarts on failure, no time limit, no admin rights. `status` reads the task state (running, ready, queued, disabled). `stop` works like `schtasks /End`. |
 

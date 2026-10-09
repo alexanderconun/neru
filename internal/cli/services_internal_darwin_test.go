@@ -55,6 +55,12 @@ func TestRenderPlist_SendsOutputOnlyToThePathItIsGiven(t *testing.T) {
 			present: true,
 		},
 		{name: "leaves stdout unredirected", needle: "StandardOutPath", present: false},
+		// A clean exit (menu Quit, "already running") stays down; a crash restarts.
+		{
+			name:    "restarts only after a failed exit",
+			needle:  "<key>KeepAlive</key>\n    <dict>\n        <key>SuccessfulExit</key>\n        <false/>",
+			present: true,
+		},
 		{name: "names no shared temp directory", needle: "/tmp", present: false},
 		{name: "leaves no placeholder behind", needle: "NERU_", present: false},
 	}
