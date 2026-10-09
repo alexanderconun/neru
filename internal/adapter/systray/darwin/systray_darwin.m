@@ -17,6 +17,7 @@
 extern void systray_menu_item_selected(int menuId);
 extern void systray_on_ready(void);
 extern void systray_on_exit(void);
+extern void systray_on_reopen(void);
 
 #pragma mark - Static State
 
@@ -51,6 +52,13 @@ static BOOL _exitCalled = NO;
 		_exitCalled = YES;
 		systray_on_exit();
 	}
+}
+
+// Opening the app again while it runs (Finder, Spotlight, `open -a`) sends
+// 'rapp', which AppKit routes here. A fresh launch sends 'oapp' instead.
+- (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag {
+	systray_on_reopen();
+	return NO;  // handled; AppKit's default would open an untitled window
 }
 
 - (void)itemClicked:(id)sender {

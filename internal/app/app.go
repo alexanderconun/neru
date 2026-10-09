@@ -38,6 +38,8 @@ type SystrayComponent interface {
 	OnReady()
 	OnExit()
 	Close()
+	// OpenSettings opens the settings window without blocking the caller.
+	OpenSettings()
 }
 
 // App is the main application instance containing all state and dependencies.

@@ -220,8 +220,8 @@ func (c *Component) OnReady() {
 	c.mReloadConfig = c.mConfig.AddSubMenuItem("Reload")
 	c.mOpenConfig = c.mConfig.AddSubMenuItem("Open in Editor")
 
-	c.mToggleDisable = c.tray.AddMenuItem("Pause Neru")
-	c.mToggleEnable = c.tray.AddMenuItem("Resume Neru")
+	c.mToggleDisable = c.tray.AddMenuItem("Pause " + buildinfo.DisplayName)
+	c.mToggleEnable = c.tray.AddMenuItem("Resume " + buildinfo.DisplayName)
 	c.mToggleEnable.Hide() // Initially hide the enable option
 
 	c.tray.AddSeparator()
@@ -267,6 +267,11 @@ func (c *Component) Close() {
 	c.app.OffScrollInvertStateChanged(c.scrollInvertStateSubscriptionID)
 }
 
+// OpenSettings opens the settings window, as the Settings… menu item does. The
+// macOS reopen event calls it on the Cocoa main thread, and opening runs
+// /usr/bin/open synchronously, so it must not run inline.
+func (c *Component) OpenSettings() { go c.handleOpenSettings() }
+
 // updateMenuItems updates the systray menu items based on the current enabled state.
 func (c *Component) updateMenuItems(enabled bool) {
 	// Update icon, tooltip, and menu items to show current status
@@ -274,11 +279,11 @@ func (c *Component) updateMenuItems(enabled bool) {
 	c.tray.SetIcon(iconBytes, isTemplate)
 
 	if enabled {
-		c.tray.SetTooltip("Neru - Running")
+		c.tray.SetTooltip(buildinfo.DisplayName + " - Running")
 		c.mToggleDisable.Show()
 		c.mToggleEnable.Hide()
 	} else {
-		c.tray.SetTooltip("Neru - Paused")
+		c.tray.SetTooltip(buildinfo.DisplayName + " - Paused")
 		c.mToggleDisable.Hide()
 		c.mToggleEnable.Show()
 	}
@@ -410,7 +415,7 @@ func (c *Component) notify(message string) {
 	}
 
 	go func() {
-		err := c.system.ShowNotification(c.ctx, "Neru", message)
+		err := c.system.ShowNotification(c.ctx, buildinfo.DisplayName, message)
 		if err != nil {
 			c.logger.Warn("Could not show a tray notification", zap.Error(err))
 		}

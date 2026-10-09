@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap/zaptest"
 
 	"github.com/y3owk1n/neru/internal/app/components/systray"
+	"github.com/y3owk1n/neru/internal/buildinfo"
 	"github.com/y3owk1n/neru/internal/domain"
 	portmocks "github.com/y3owk1n/neru/internal/ports/mocks"
 )
@@ -105,8 +106,8 @@ func TestComponent_OnReady(t *testing.T) {
 	// Before ports.SystrayPort existed this test could only assert "did not
 	// panic", because the menu was built against a process-global tray. The
 	// mock lets it assert what the user actually sees.
-	if tray.Tooltip() == "" {
-		t.Error("OnReady() set no tooltip on the tray")
+	if want := buildinfo.DisplayName + " - Paused"; tray.Tooltip() != want {
+		t.Errorf("OnReady() tooltip = %q, want %q", tray.Tooltip(), want)
 	}
 
 	items := tray.Items()
@@ -115,7 +116,10 @@ func TestComponent_OnReady(t *testing.T) {
 	}
 
 	// Spot-check entries the menu must always carry, whatever else changes.
-	for _, want := range []string{"Help", "Config", "Activate Modes"} {
+	for _, want := range []string{
+		"Help", "Config", "Activate Modes",
+		"Pause " + buildinfo.DisplayName, "Resume " + buildinfo.DisplayName,
+	} {
 		if tray.FindItem(want) == nil {
 			var titles []string
 			for _, item := range items {
