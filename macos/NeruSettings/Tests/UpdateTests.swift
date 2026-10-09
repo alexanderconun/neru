@@ -14,6 +14,8 @@ func runUpdateTests() {
     assert(UpdateChecker.installedVersion(buildID: nil, cliVersion: cli) == "v1.2.3")
     assert(UpdateChecker.installedVersion(buildID: "", cliVersion: cli) == "v1.2.3")
     assert(UpdateChecker.installedVersion(buildID: nil, cliVersion: "") == "")
+    // An error from a missing binary is not a version.
+    assert(UpdateChecker.installedVersion(buildID: nil, cliVersion: "Could not find the neru binary") == "")
 
     // A trimmed /releases/latest payload.
     let release = Data("""
