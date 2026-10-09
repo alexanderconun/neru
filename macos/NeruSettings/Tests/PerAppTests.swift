@@ -88,5 +88,21 @@ func runPerAppTests() {
     // Removing the last app leaves no per-app tables at all.
     let empty = Neru.writeAppConfigs(toml, hints: [], scroll: [])
     assert(!empty.contains("hints.app_configs") && !empty.contains("scroll.app_configs") && empty.contains("[[grid.app_configs]]"))
+
+    // Edits start from the dump's arrays, read the same way from any dump.
+    assert(Neru.bundleIDs(Neru.appConfigs(dump, "hints")) == ["com.apple.Safari", "com.Only.Hints"])
+    assert(Neru.appConfigs(dump, "grid").isEmpty)
+
+    // Comments above the table after a removed block stay with that table.
+    let middle = "a = 1\n\n[[hints.app_configs]]\nbundle_id = \"x\"\n# inside\nstrategy = \"vision\"\n\n# Scroll mode\n\n# See docs\n[scroll]\nb = 2"
+    let moved = Neru.writeAppConfigs(middle, hints: [], scroll: [])
+    assert(moved == "a = 1\n\n# Scroll mode\n\n# See docs\n[scroll]\nb = 2\n", moved)
+
+    // Headers with a trailing comment or a CRLF line end are still replaced.
+    for header in ["[[hints.app_configs]] # Safari needs OCR", "[[hints.app_configs]]\r"] {
+        let odd = "[general]\n\(header)\nbundle_id = \"com.apple.Safari\"\n"
+        let fixed = Neru.writeAppConfigs(odd, hints: Neru.removing(hints, "com.apple.safari"), scroll: [])
+        assert(!fixed.contains("Safari") && fixed.hasPrefix("[general]\n\n[[hints.app_configs]]\nbundle_id = \"com.Only.Hints\""), fixed)
+    }
     print("perapp ok")
 }

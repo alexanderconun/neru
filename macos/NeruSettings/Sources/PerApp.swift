@@ -21,9 +21,9 @@ extension Neru {
     /// JSON numbers and booleans both arrive as NSNumber, so the key says which.
     static let appConfigBools: Set = ["ignoreClickableCheck", "visibleCheckEnabled"]
 
-    func appConfigs(_ section: String) -> [[String: Any]] {
-        value("\(section).app_configs") as? [[String: Any]] ?? []
-    }
+    typealias AppConfigs = (hints: [[String: Any]], scroll: [[String: Any]])
+
+    func appConfigs(_ section: String) -> [[String: Any]] { Self.appConfigs(config, section) }
 
     /// Every app with an override in either section, first seen first.
     var perAppIDs: [String] { Self.bundleIDs(appConfigs("hints") + appConfigs("scroll")) }
@@ -35,26 +35,43 @@ extension Neru {
 
     /// Sets one field (nil restores the default) and rewrites both arrays.
     func setAppSetting(_ section: String, _ id: String, _ key: String, _ value: Any?) {
-        var hints = appConfigs("hints"), scroll = appConfigs("scroll")
-        if section == "hints" {
-            hints = Self.setting(hints, id: id, key: key, to: value)
-        } else {
-            scroll = Self.setting(scroll, id: id, key: key, to: value)
+        editAppConfigs { hints, scroll in
+            section == "hints" ? (Self.setting(hints, id: id, key: key, to: value), scroll)
+                : (hints, Self.setting(scroll, id: id, key: key, to: value))
         }
-        saveAppConfigs(hints: hints, scroll: scroll)
     }
 
     func removeAppConfigs(_ id: String) {
-        saveAppConfigs(hints: Self.removing(appConfigs("hints"), id), scroll: Self.removing(appConfigs("scroll"), id))
+        editAppConfigs { (Self.removing($0, id), Self.removing($1, id)) }
     }
 
-    private func saveAppConfigs(hints: [[String: Any]], scroll: [[String: Any]]) {
-        setLocal("hints.app_configs", hints)
-        setLocal("scroll.app_configs", scroll)
-        editConfigText { Self.writeAppConfigs($0, hints: hints, scroll: scroll) }
+    /// Shows `change` at once, then applies it again on the CLI queue to a
+    /// fresh dump, so queued edits build on each other and never on a dump
+    /// that went stale while they waited. The daemon reads config.toml only
+    /// when told to, so it reloads first: blocks added to the file by hand
+    /// since are kept, and a file it refuses stops the edit.
+    // ponytail: while edits are queued, a dump landing in between can show an
+    // older list for a moment; the last dump settles it.
+    private func editAppConfigs(_ change: @escaping ([[String: Any]], [[String: Any]]) -> AppConfigs) {
+        let shown = change(appConfigs("hints"), appConfigs("scroll"))
+        setLocal("hints.app_configs", shown.hints)
+        setLocal("scroll.app_configs", shown.scroll)
+        editConfigText { text in
+            let reload = self.run(["config", "reload"])
+            guard reload.ok else { throw CLIError(errorDescription: reload.out) }
+            let dump = self.run(["config", "dump"])
+            guard dump.ok, let fresh = Self.json(dump.out) else { throw CLIError(errorDescription: dump.out) }
+            let next = change(Self.appConfigs(fresh, "hints"), Self.appConfigs(fresh, "scroll"))
+            return Self.writeAppConfigs(text, hints: next.hints, scroll: next.scroll)
+        }
     }
 
     // MARK: pure helpers (covered by Tests/PerAppTests.swift)
+
+    /// `section`'s entries in a `config dump` ("hints" and "scroll" are already camelCase).
+    static func appConfigs(_ dump: [String: Any], _ section: String) -> [[String: Any]] {
+        (dump[section] as? [String: Any])?["appConfigs"] as? [[String: Any]] ?? []
+    }
 
     /// The daemon matches bundle ids case-insensitively.
     static func isApp(_ entry: [String: Any], _ id: String) -> Bool {
@@ -88,8 +105,8 @@ extension Neru {
     }
 
     /// config.toml with both arrays regenerated from `hints` and `scroll`.
-    // ponytail: comments inside the old blocks (and any right above the next
-    // table header) are lost; keeping them needs a comment-aware TOML editor.
+    // ponytail: comments inside the old blocks are lost; keeping them needs a
+    // comment-aware TOML editor.
     static func writeAppConfigs(_ toml: String, hints: [[String: Any]], scroll: [[String: Any]]) -> String {
         let withHints = replaceArrayTables(toml, name: "hints.app_configs", blocks: appConfigBlocks("hints", hints))
         return replaceArrayTables(withHints, name: "scroll.app_configs", blocks: appConfigBlocks("scroll", scroll))
@@ -135,4 +152,8 @@ extension Neru {
     static func tomlArray(_ list: [String]) -> String {
         "[" + list.map(tomlString).joined(separator: ", ") + "]"
     }
+}
+
+private struct CLIError: LocalizedError {
+    let errorDescription: String?
 }
