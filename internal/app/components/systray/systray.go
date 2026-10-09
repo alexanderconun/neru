@@ -444,9 +444,21 @@ func (c *Component) handleOpenConfig() {
 // settingsAppName is the macOS settings window app, built by `just build-settings`.
 const settingsAppName = "NeruSettings.app"
 
-// handleOpenSettings launches the settings app bundled in Neru.app, next to
-// the neru binary, or in /Applications. Without one it falls back to the config file.
+// handleOpenSettings opens the settings app. Without one it falls back to the config file.
 func (c *Component) handleOpenSettings() {
+	if OpenSettingsApp(c.ctx, c.logger) {
+		return
+	}
+
+	c.notify("Settings app not found, opening the config file instead")
+	c.handleOpenConfig()
+}
+
+// OpenSettingsApp launches the settings app bundled in Neru.app, next to the
+// neru binary, or in /Applications, and reports whether it found one. It
+// needs no tray, so the headless daemon's reopen handler uses it too. It runs
+// /usr/bin/open synchronously: never call it on the Cocoa main thread.
+func OpenSettingsApp(ctx context.Context, logger *zap.Logger) bool {
 	candidates := []string{filepath.Join("/Applications", settingsAppName)}
 
 	exe, err := os.Executable()
@@ -469,16 +481,15 @@ func (c *Component) handleOpenSettings() {
 			continue
 		}
 
-		openErr := platform.OpenExternal(c.ctx, path)
+		openErr := platform.OpenExternal(ctx, path)
 		if openErr != nil {
-			c.logger.Error("Failed to open settings app", zap.Error(openErr))
+			logger.Error("Failed to open settings app", zap.Error(openErr))
 		}
 
-		return
+		return true
 	}
 
-	c.notify("Settings app not found, opening the config file instead")
-	c.handleOpenConfig()
+	return false
 }
 
 // handleReloadConfig reloads the configuration from disk.

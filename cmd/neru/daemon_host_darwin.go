@@ -3,8 +3,11 @@
 package main
 
 import (
+	"context"
+
 	"github.com/y3owk1n/neru/internal/adapter/systray"
 	"github.com/y3owk1n/neru/internal/app"
+	traycomponent "github.com/y3owk1n/neru/internal/app/components/systray"
 )
 
 type darwinDaemonHost struct{}
@@ -36,6 +39,11 @@ func (darwinDaemonHost) Run(application *app.App) error {
 		systray.SetReopenHandler(systrayComponent.OpenSettings)
 		systray.Run(systrayComponent.OnReady, systrayComponent.OnExit)
 	} else {
+		// With the menu bar icon hidden, opening the app again is the only way
+		// back to the settings window. Off the main thread: opening blocks.
+		systray.SetReopenHandler(func() {
+			go traycomponent.OpenSettingsApp(context.Background(), application.Logger())
+		})
 		systray.RunHeadless(func() {}, func() {})
 	}
 
