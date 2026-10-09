@@ -106,7 +106,23 @@ const (
 	CodeNotSupported = "ERR_NOT_SUPPORTED"
 	// CodeBusy means the daemon already has as many streams open as it allows.
 	CodeBusy = "ERR_BUSY"
+	// CodeAccessibilityDenied means the daemon is up but blocked on the macOS
+	// startup Accessibility alert, so it can do nothing yet.
+	CodeAccessibilityDenied = "ERR_ACCESSIBILITY_DENIED"
 )
+
+// WaitingForAccessibility is the whole daemon while it waits on the startup
+// Accessibility alert: it refuses every command, ping included. Any reply keeps
+// IsServerRunning true, so a second launch stops instead of opening a second
+// alert, and a refusal rather than a partial payload keeps every client on its
+// error path, where the code says why.
+func WaitingForAccessibility(context.Context, Command) Response {
+	return Response{
+		Success: false,
+		Message: "waiting for Accessibility permission",
+		Code:    CodeAccessibilityDenied,
+	}
+}
 
 // Command is a command sent through the IPC interface.
 type Command struct {

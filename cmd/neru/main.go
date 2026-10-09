@@ -9,6 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/y3owk1n/neru/internal/adapter/ipc"
 	"github.com/y3owk1n/neru/internal/adapter/platform"
 	"github.com/y3owk1n/neru/internal/app"
 	"github.com/y3owk1n/neru/internal/config"
@@ -181,7 +182,29 @@ func handleAccessibilityPermissionStartup() {
 		return
 	}
 
-	if platform.ShowAccessibilityPermissionStartupAlert() == platform.AccessibilityPermissionStartupQuit {
+	// While the alert is up, clients learn why nothing works instead of
+	// finding no daemon, and a second launch stops instead of opening a
+	// second alert.
+	placeholder, placeholderErr := ipc.NewServer(ipc.WaitingForAccessibility, nil)
+	if placeholderErr != nil {
+		fmt.Fprintf(
+			os.Stderr,
+			"Cannot answer IPC while waiting for Accessibility permission: %v\n",
+			placeholderErr,
+		)
+	} else {
+		placeholder.Start()
+	}
+
+	choice := platform.ShowAccessibilityPermissionStartupAlert()
+
+	// Stopped before either way out: os.Exit skips defers, and app.New binds
+	// this same endpoint in phase 8.
+	if placeholder != nil {
+		_ = placeholder.Stop()
+	}
+
+	if choice == platform.AccessibilityPermissionStartupQuit {
 		os.Exit(0)
 	}
 }
