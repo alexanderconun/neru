@@ -314,12 +314,12 @@ struct TextRow: View {
                 .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
         }
         .onAppear { text = neru.string(key) }
+        .onChange(of: neru.string(key)) { _, saved in if !focused { text = saved } } // snaps back if refused
     }
 
     private func commit() {
         guard text != neru.string(key) else { return }
         neru.set(key, text)
-        text = neru.string(key) // snap back if the daemon refused it
     }
 }
 
@@ -340,7 +340,7 @@ struct SliderRow: View {
             HStack {
                 low.foregroundStyle(.secondary)
                 Slider(value: $value, in: range, step: step) { editing in
-                    if !editing { neru.set(key, String(Int(value))) }
+                    if !editing { neru.set(key, String(Int(value)), local: Int(value)) }
                 }
                 .frame(maxWidth: 260)
                 high.foregroundStyle(.secondary)

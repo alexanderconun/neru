@@ -46,8 +46,6 @@ final class Neru: ObservableObject {
         return found.first { run($0, ["status"]).ok } ?? found.first
     }
 
-    // ponytail: runs synchronously on the main thread; each call is one local IPC
-    // round trip. Move to a Task if the window ever feels sluggish.
     @discardableResult
     func run(_ args: [String]) -> (ok: Bool, out: String) {
         guard let binary else { return (false, "Could not find the neru binary") }
@@ -68,21 +66,44 @@ final class Neru: ObservableObject {
         return (process.terminationStatus == 0, out)
     }
 
-    func refresh() {
-        binary = Self.findBinary()
-        version = run(["--version"]).out
-        launchAtLogin = run(["services", "status"]).out == "Service loaded"
-        if let status = Self.json(run(["status", "--json"]).out) {
-            configPath = status["config"] as? String ?? ""
+    /// Every CLI call runs here, off the main thread and in order, so the
+    /// window never waits on a process.
+    private let queue = DispatchQueue(label: "neru.settings.cli")
+
+    /// Runs `work` in the background, then reloads the config on the main thread.
+    /// `work` returns an error message, or nil.
+    private func background(_ work: @escaping () -> String?) {
+        queue.async {
+            let failure = work()
+            let dump = self.run(["config", "dump"])
+            DispatchQueue.main.async {
+                if let failure { self.error = failure }
+                self.apply(dump)
+            }
         }
-        reloadConfig()
     }
 
-    func reloadConfig() {
-        let dump = run(["config", "dump"])
+    func refresh() {
+        queue.async {
+            let binary = Self.findBinary()
+            self.binary = binary
+            let version = self.run(["--version"]).out
+            let login = self.run(["services", "status"]).out == "Service loaded"
+            let path = Self.json(self.run(["status", "--json"]).out)?["config"] as? String
+            let dump = self.run(["config", "dump"])
+            DispatchQueue.main.async {
+                self.version = version
+                self.launchAtLogin = login
+                if let path { self.configPath = path }
+                self.apply(dump)
+            }
+        }
+    }
+
+    private func apply(_ dump: (ok: Bool, out: String)) {
         running = dump.ok
         notRunningReason = dump.ok ? "" : dump.out
-        config = Self.json(dump.out) ?? [:]
+        if dump.ok { config = Self.json(dump.out) ?? [:] }
     }
 
     func start() {
@@ -110,36 +131,59 @@ final class Neru: ObservableObject {
     func double(_ key: String) -> Double { (value(key) as? NSNumber)?.doubleValue ?? 0 }
     func strings(_ key: String) -> [String] { value(key) as? [String] ?? [] }
 
-    // MARK: writing
-
-    func set(_ key: String, _ value: String) {
-        let result = run(["config", "set", key, value])
-        error = result.ok ? nil : result.out
-        reloadConfig()
+    /// Writes into the local copy of the dump so the window shows a change
+    /// before the daemon has it. The next dump replaces it with the truth.
+    private func setLocal(_ key: String, _ value: Any) {
+        func put(_ node: [String: Any], _ parts: ArraySlice<String>) -> [String: Any] {
+            var node = node
+            let head = Self.camel(parts.first!)
+            node[head] = parts.count == 1 ? value : put(node[head] as? [String: Any] ?? [:], parts.dropFirst())
+            return node
+        }
+        config = put(config, ArraySlice(key.split(separator: ".").map(String.init)))
     }
 
-    func set(_ key: String, _ value: Bool) { set(key, value ? "true" : "false") }
+    // MARK: writing
+
+    func set(_ key: String, _ value: String, local: Any? = nil) {
+        setMany([(key, value)], local: [(key, local ?? value)])
+    }
+
+    func set(_ key: String, _ value: Bool) { set(key, value ? "true" : "false", local: value) }
 
     func set(_ key: String, _ values: [String]) {
         let data = try? JSONSerialization.data(withJSONObject: values)
-        set(key, String(decoding: data ?? Data("[]".utf8), as: UTF8.self))
+        set(key, String(decoding: data ?? Data("[]".utf8), as: UTF8.self), local: values)
     }
 
-    /// Sets several fields, then applies them with one reload.
-    func setMany(_ pairs: [(String, String)]) {
-        for (key, value) in pairs {
-            let result = run(["config", "set", "--no-reload", key, value])
-            if !result.ok { error = result.out; return }
+    /// Sets several fields; more than one is applied with a single reload.
+    func setMany(_ pairs: [(String, String)], local: [(String, Any)]? = nil) {
+        for (key, value) in local ?? pairs.map({ ($0.0, $0.1 as Any) }) { setLocal(key, value) }
+        error = nil
+        background {
+            if pairs.count == 1 {
+                let result = self.run(["config", "set", pairs[0].0, pairs[0].1])
+                return result.ok ? nil : result.out
+            }
+            for (key, value) in pairs {
+                let result = self.run(["config", "set", "--no-reload", key, value])
+                if !result.ok { return result.out }
+            }
+            let result = self.run(["config", "reload"])
+            return result.ok ? nil : result.out
         }
-        let result = run(["config", "reload"])
-        error = result.ok ? nil : result.out
-        reloadConfig()
     }
 
     func setLaunchAtLogin(_ on: Bool) {
-        let result = run(["services", on ? "install" : "uninstall"])
-        error = result.ok ? nil : result.out
-        launchAtLogin = run(["services", "status"]).out == "Service loaded"
+        launchAtLogin = on
+        queue.async {
+            let result = self.run(["services", on ? "install" : "uninstall"])
+            let login = self.run(["services", "status"]).out == "Service loaded"
+            DispatchQueue.main.async {
+                if !result.ok { self.error = result.out }
+                self.launchAtLogin = login
+            }
+        }
     }
 
     // MARK: hotkeys
@@ -170,28 +214,38 @@ final class Neru: ObservableObject {
     /// Rebinds `mode` to `combo` in the [hotkeys] table of config.toml.
     func setShortcut(_ combo: String, for mode: String) {
         guard !configPath.isEmpty else { error = "Neru is running without a config file"; return }
-        let text = (try? String(contentsOfFile: configPath, encoding: .utf8)) ?? ""
-        let updated = Self.rebind(text, mode: mode, to: combo, replacing: combos(for: mode))
-        do {
-            try updated.write(toFile: configPath, atomically: true, encoding: .utf8)
-        } catch {
-            self.error = error.localizedDescription
-            return
+        let current = combos(for: mode)
+        var bindings = value("hotkeys.bindings") as? [String: Any] ?? [:]
+        for old in current { bindings[old] = nil }
+        bindings[combo] = [mode]
+        setLocal("hotkeys.bindings", bindings)
+
+        let path = configPath
+        error = nil
+        background {
+            let text = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+            let updated = Self.rebind(text, mode: mode, to: combo, replacing: current)
+            do {
+                try updated.write(toFile: path, atomically: true, encoding: .utf8)
+            } catch {
+                return error.localizedDescription
+            }
+            let result = self.run(["config", "reload"])
+            return result.ok ? nil : result.out
         }
-        let result = run(["config", "reload"])
-        error = result.ok ? nil : result.out
-        reloadConfig()
     }
 
     /// Pauses Neru so its own hotkeys don't swallow the keys being recorded.
     /// Leaves Neru paused afterwards if the user had paused it themselves.
     func pause(_ paused: Bool) {
-        if paused {
-            pausedForRecording = Self.json(run(["status", "--json"]).out)?["enabled"] as? Bool ?? false
-            if pausedForRecording { run(["stop"]) }
-        } else if pausedForRecording {
-            run(["start"])
-            pausedForRecording = false
+        queue.async {
+            if paused {
+                self.pausedForRecording = Self.json(self.run(["status", "--json"]).out)?["enabled"] as? Bool ?? false
+                if self.pausedForRecording { self.run(["stop"]) }
+            } else if self.pausedForRecording {
+                self.run(["start"])
+                self.pausedForRecording = false
+            }
         }
     }
 
