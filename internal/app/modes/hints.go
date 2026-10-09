@@ -69,6 +69,17 @@ func (h *handlerState) activateHintModeWithAction(activation modecmd.Activation)
 	}
 }
 
+// warnNothingToLabel plays the warning when an activation finds nothing to
+// label, which would otherwise look like nothing happening. A refresh (the
+// next round of a chained click, a passthrough refresh) stays silent: its
+// labels were on screen and closing them says enough, and a chain that ends
+// because its own click closed the last window is no failure.
+func (h *handlerState) warnNothingToLabel(isRefresh bool) {
+	if !isRefresh {
+		h.actionService.PlayWarningSound()
+	}
+}
+
 // activateHintModeInternal activates hint mode with an optional action.
 // It handles mode validation, overlay positioning, element collection, hint
 // generation, and UI setup for hint-based navigation.
@@ -218,7 +229,7 @@ func (h *handlerState) activateHintModeInternal(activation modecmd.Activation) {
 			zap.String("action", actionString),
 		)
 
-		h.actionService.PlayWarningSound()
+		h.warnNothingToLabel(isRefresh)
 		h.abandonHintActivation(isRefresh)
 
 		return
@@ -239,7 +250,7 @@ func (h *handlerState) activateHintModeInternal(activation modecmd.Activation) {
 	if len(domainHints) == 0 {
 		h.logger.Warn("No hints generated for action", zap.String("action", actionString))
 
-		h.actionService.PlayWarningSound()
+		h.warnNothingToLabel(isRefresh)
 		h.abandonHintActivation(isRefresh)
 
 		return

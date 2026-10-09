@@ -41,11 +41,15 @@ func TestActivateHints_WarnsWhenNothingToLabel(t *testing.T) {
 		name    string
 		enabled bool
 		walkErr error
+		refresh bool
 		want    []ports.Sound
 	}{
-		{"no hints warns", true, nil, []ports.Sound{ports.SoundWarning}},
-		{"a generation error warns", true, walkFailed, []ports.Sound{ports.SoundWarning}},
-		{"disabled stays silent", false, nil, nil},
+		{"no hints warns", true, nil, false, []ports.Sound{ports.SoundWarning}},
+		{"a generation error warns", true, walkFailed, false, []ports.Sound{ports.SoundWarning}},
+		{"disabled stays silent", false, nil, false, nil},
+		// A chained click whose click closed the last window ends the chain; that is no failure.
+		{"a refresh with nothing left stays silent", true, nil, true, nil},
+		{"a refresh whose walk fails stays silent", true, walkFailed, true, nil},
 	}
 
 	for _, testCase := range tests {
@@ -66,10 +70,15 @@ func TestActivateHints_WarnsWhenNothingToLabel(t *testing.T) {
 				configpkg.SoundConfig{Enabled: testCase.enabled, Volume: 50},
 			)
 
+			appState := state.NewAppState()
+			if testCase.refresh {
+				appState.SetMode(domain.ModeHints)
+			}
+
 			handler := newHandlerWithState(handlerState{
 				ctx:           context.Background(),
 				config:        hintsEnabledConfig(),
-				appState:      state.NewAppState(),
+				appState:      appState,
 				cursorState:   state.NewCursorState(),
 				modifierState: state.NewModifierState(),
 				system:        system,
@@ -86,6 +95,10 @@ func TestActivateHints_WarnsWhenNothingToLabel(t *testing.T) {
 
 			if !slices.Equal(system.played, testCase.want) {
 				t.Fatalf("played %v, want %v", system.played, testCase.want)
+			}
+
+			if mode := appState.CurrentMode(); mode != domain.ModeIdle {
+				t.Fatalf("mode = %v after finding nothing to label, want idle", mode)
 			}
 		})
 	}
