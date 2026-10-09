@@ -117,3 +117,40 @@ func TestServer_HandleConnection_AcceptsACommandInsideTheLimit(t *testing.T) {
 
 	server.wg.Wait()
 }
+
+// While the daemon waits on the startup Accessibility alert, a client of the
+// same build gets the denial for every command — ping included — through the
+// real handshake rather than a version mismatch, and a launch probing with
+// IsServerRunning still finds the daemon instead of starting another.
+func TestWaitingForAccessibility_RefusesEveryCommandThroughTheHandshake(t *testing.T) {
+	isolateEndpoint(t)
+
+	server, serverErr := NewServer(WaitingForAccessibility, nil)
+	if serverErr != nil {
+		t.Fatalf("NewServer() error = %v", serverErr)
+	}
+
+	server.Start()
+	t.Cleanup(func() { _ = server.Stop() })
+
+	if !IsServerRunning() {
+		t.Fatal("IsServerRunning() = false, want the waiting daemon to count as running")
+	}
+
+	for _, action := range []string{"ping", "status", "config", "health", "hints", "watch"} {
+		response, sendErr := NewClient().Send(Command{Action: action})
+		if sendErr != nil {
+			t.Fatalf("Send(%s) error = %v", action, sendErr)
+		}
+
+		if response.Success || response.Code != CodeAccessibilityDenied ||
+			response.Version != BuildVersion() {
+			t.Errorf(
+				"Send(%s) = %+v, want a versioned %s refusal",
+				action,
+				response,
+				CodeAccessibilityDenied,
+			)
+		}
+	}
+}

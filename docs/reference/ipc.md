@@ -72,18 +72,19 @@ watch gets `ERR_BUSY`.
 
 ## Response codes
 
-| Code                    | Meaning                                                  |
-| ----------------------- | -------------------------------------------------------- |
-| `OK`                    | Command succeeded                                        |
-| `ERR_UNKNOWN_COMMAND`   | No such command                                          |
-| `ERR_INVALID_INPUT`     | Malformed arguments or flag values                       |
-| `ERR_NOT_RUNNING`       | Neru is paused via `neru stop`                           |
-| `ERR_ALREADY_RUNNING`   | Target is already in the requested state                 |
-| `ERR_MODE_DISABLED`     | The requested mode is disabled in the configuration      |
-| `ERR_ACTION_FAILED`     | The action was dispatched but did not complete           |
-| `ERR_CHAIN_BAIL`        | An action chain aborted, for example `--bail`            |
-| `ERR_NOT_SUPPORTED`     | Not implemented on this platform                         |
-| `ERR_VERSION_MISMATCH`  | Client and daemon builds differ. Restart the daemon.     |
-| `ERR_BUSY`              | Too many watches are open                                |
+| Code                       | Meaning                                                                                                          |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `OK`                       | Command succeeded                                                                                                |
+| `ERR_UNKNOWN_COMMAND`      | No such command                                                                                                  |
+| `ERR_INVALID_INPUT`        | Malformed arguments or flag values                                                                               |
+| `ERR_NOT_RUNNING`          | Neru is paused via `neru stop`                                                                                   |
+| `ERR_ALREADY_RUNNING`      | Target is already in the requested state                                                                         |
+| `ERR_MODE_DISABLED`        | The requested mode is disabled in the configuration                                                              |
+| `ERR_ACTION_FAILED`        | The action was dispatched but did not complete                                                                   |
+| `ERR_CHAIN_BAIL`           | An action chain aborted, for example `--bail`                                                                    |
+| `ERR_NOT_SUPPORTED`        | Not implemented on this platform                                                                                 |
+| `ERR_VERSION_MISMATCH`     | Client and daemon builds differ. Restart the daemon.                                                             |
+| `ERR_BUSY`                 | Too many watches are open                                                                                        |
+| `ERR_ACCESSIBILITY_DENIED` | macOS only: waiting for Accessibility permission. Every command, `ping` included, gets this until it is granted. |
 
 A connection error rather than a response code means no daemon is running.

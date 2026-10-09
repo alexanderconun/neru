@@ -10,6 +10,13 @@
 
 #import <Foundation/Foundation.h>
 
+/// The name the native dialogs call the app: the bundle's CFBundleDisplayName,
+/// so a rebranded build names itself, else "Neru" (bare binary, or no key).
+static inline NSString *NeruAppName(void) {
+	id name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"];
+	return [name isKindOfClass:[NSString class]] && [name length] > 0 ? name : @"Neru";
+}
+
 #pragma mark - Alert Functions
 
 /// Show a config validation error alert with error details and config path
@@ -24,7 +31,7 @@ int NeruShowConfigValidationErrorAlert(const char *errorMessage, const char *con
 int NeruShowConfigOnboardingAlert(const char *configPath);
 
 /// Show the startup accessibility permission guidance alert.
-/// The alert lets the user request permission and then dismiss it with Done.
+/// The alert lets the user request permission, and closes on its own once it is granted.
 /// @return 1 if permission is granted, 2 if the user chose Quit.
 int NeruShowAccessibilityPermissionStartupAlert(void);
 
