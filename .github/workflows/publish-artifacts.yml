@@ -81,13 +81,18 @@ jobs:
             - name: Build neru darwin arm64 artifact
               run: just release-ci-darwin arm64 ${{ inputs.version_override }}
 
+            # dist embeds bin/NeruSettings.app only when it exists, so a zip
+            # built without this step ships no settings window.
+            - name: Build NeruSettings.app (darwin arm64)
+              run: just build-settings
+
             - name: Assemble neru-darwin-arm64
               run: just dist bin/neru-darwin-arm64 build/arm64 "${{ inputs.macos_bundle_version }}" "${{ inputs.macos_short_version }}" "${{ inputs.version_override }}"
 
             - name: Package neru-darwin-arm64
               run: |
                   cd build/arm64
-                  zip -r ../../neru-darwin-arm64.zip bin Neru.app share
+                  zip -r ../../neru-darwin-arm64.zip bin Homekey.app share
                   cd ../..
 
             # `hash  filename` — the format `shasum -c` and `sha256sum -c` read.
@@ -138,13 +143,16 @@ jobs:
             - name: Build neru darwin amd64 artifact
               run: just release-ci-darwin amd64 ${{ inputs.version_override }}
 
+            - name: Build NeruSettings.app (darwin amd64)
+              run: just build-settings
+
             - name: Assemble neru-darwin-amd64
               run: just dist bin/neru-darwin-amd64 build/amd64 "${{ inputs.macos_bundle_version }}" "${{ inputs.macos_short_version }}" "${{ inputs.version_override }}"
 
             - name: Package neru-darwin-amd64
               run: |
                   cd build/amd64
-                  zip -r ../../neru-darwin-amd64.zip bin Neru.app share
+                  zip -r ../../neru-darwin-amd64.zip bin Homekey.app share
                   cd ../..
 
             - name: Generate darwin amd64 checksum

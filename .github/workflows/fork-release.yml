@@ -1,0 +1,72 @@
+on:
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: "Release tag, vX.Y.Z-hk.N (e.g. v1.57.0-hk.1)"
+                required: true
+                type: string
+
+name: fork-release
+
+# Homekey's release path: run it by hand from the Actions tab. It creates the
+# tag and a normal (not pre-) release at the dispatched commit, so
+# /releases/latest returns it, then publishes the six zips the same way
+# release-please.yml does upstream. The -hk.N suffix keeps fork tags from
+# clashing with upstream's vX.Y.Z when upstream tags are fetched. See HOMEKEY.md.
+
+permissions:
+    contents: read
+
+jobs:
+    create-release:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write # create the tag and the release
+        outputs:
+            tag: ${{ steps.meta.outputs.tag }}
+            macos_version: ${{ steps.meta.outputs.macos_version }}
+        steps:
+            # The input reaches shells and file names downstream, so it is
+            # checked against the one shape it may take. CFBundleVersion and
+            # CFBundleShortVersionString take digits and dots only, so the plist
+            # gets X.Y.Z; the full tag lives in NeruBuildID and `neru --version`.
+            - name: Validate the tag
+              id: meta
+              env:
+                  TAG: ${{ inputs.tag }}
+              run: |
+                  if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-hk\.[0-9]+$ ]]; then
+                      echo "::error::tag must look like v1.57.0-hk.1"
+                      exit 1
+                  fi
+                  version="${TAG#v}"
+                  echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+                  echo "macos_version=${version%%-*}" >> "$GITHUB_OUTPUT"
+
+            - name: Create the release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  TAG: ${{ steps.meta.outputs.tag }}
+              run: |
+                  gh release create "$TAG" -R "$GITHUB_REPOSITORY" \
+                    --target "$GITHUB_SHA" \
+                    --title "Homekey $TAG" \
+                    --generate-notes \
+                    --latest
+
+    publish-release-artifacts:
+        needs: create-release
+        # Build-provenance permissions: a called workflow can only narrow what
+        # its caller granted — see the header comment in publish-artifacts.yml.
+        permissions:
+            contents: write
+            id-token: write
+            attestations: write
+        uses: ./.github/workflows/publish-artifacts.yml
+        with:
+            release_tag: ${{ needs.create-release.outputs.tag }}
+            version_override: ${{ needs.create-release.outputs.tag }}
+            macos_bundle_version: ${{ needs.create-release.outputs.macos_version }}
+            macos_short_version: ${{ needs.create-release.outputs.macos_version }}
+        secrets:
+            upload_token: ${{ github.token }}
