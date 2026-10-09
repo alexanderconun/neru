@@ -69,8 +69,9 @@ gofumpt and golines are optional, through `go install`.
 | `just build-darwin`, `build-linux [ARCH]`, `build-windows [ARCH]` | Build for one OS. `ARCH` defaults to amd64 |
 | `just build-version v1.0.0` | Build with an explicit version string |
 | `just release` | Optimized, stripped release build |
-| `just dist` | Assemble the release layout (bin, man, `Neru.app`) in `build/dist` |
-| `just install [-y]` | Build, `dist`, then run the release installer, `-y` auto-accepts |
+| `just dist` | Assemble the release layout (bin, man, `Homekey.app`) in `build/dist` |
+| `just app` | Build and sign `build/dist/Homekey.app`; install it by hand (`HOMEKEY.md`) |
+| `just install [-y]` | Build, `dist`, then run the release installer, `-y` auto-accepts. Refused on macOS: use `just app` |
 | `just test` | Unit + integration, desktop-safe |
 | `just test-unit`, `test-integration` | One tier only, desktop-safe |
 | `just test-desktop` | Integration including the tests that drive the real cursor, keyboard and overlays |

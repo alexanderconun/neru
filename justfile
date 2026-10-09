@@ -227,12 +227,17 @@ dist BIN="" OUT="build/dist" BUNDLE_VERSION="" SHORT_VERSION="" BUILD_ID="":
 # `curl | bash` user runs (scripts/install.sh, or install.ps1 on Windows), so
 # a source install lands in the same places as a release. Pass -y to accept
 # every prompt (`just install -y`); other flags are the installer's own.
-# Homekey refuses on macOS: the installer wants Neru.app, which dist no longer
-# builds, and it would stop the running daemon before finding that out.
-[unix]
+# Homekey refuses on macOS, before building anything: the installer knows only
+# Neru.app, which dist no longer builds, and it would stop the running daemon
+# before finding that out. HOMEKEY.md has the manual steps.
+[macos]
+[doc('Refused on macOS: build with `just app`, install by hand (HOMEKEY.md).')]
+install *ARGS:
+    @echo "On macOS run 'just app' and install by hand (HOMEKEY.md)." >&2; exit 1
+
+[linux]
 [doc('Build and install from source via the release installer; -y auto-accepts.')]
 install *ARGS: build dist
-    @[ "$(uname -s)" != Darwin ] || { echo "On macOS run 'just app' and install by hand (HOMEKEY.md)." >&2; exit 1; }
     bash scripts/install.sh --from build/dist {{ ARGS }}
 
 [windows]
@@ -243,7 +248,15 @@ install *ARGS: build dist
 # Remove whatever `just install` or the curl installer put in place. Pass -y to
 # accept every prompt, and --purge to also remove your config and logs (they
 # are kept otherwise, so -y alone can never delete your config.toml).
-[unix]
+# Homekey refuses on macOS for the reason install does: the installer looks only
+# for Neru.app, so it would remove the PATH link and leave Homekey.app and its
+# login agent running.
+[macos]
+[doc('Refused on macOS: uninstall Homekey by hand (HOMEKEY.md).')]
+uninstall *ARGS:
+    @echo "On macOS uninstall Homekey by hand (HOMEKEY.md)." >&2; exit 1
+
+[linux]
 [doc('Undo `just install`; your config survives unless you pass --purge.')]
 uninstall *ARGS:
     bash scripts/install.sh --uninstall {{ ARGS }}

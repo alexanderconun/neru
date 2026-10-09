@@ -23,7 +23,9 @@ path and the install steps below.
 
 The upstream installer (`scripts/install.sh`, `just install`) is **not** used
 for Homekey: it expects `Neru.app`, and it stops the running daemon before it
-notices. `just install` refuses on macOS for that reason. Install by hand:
+notices. Its uninstall looks only for `Neru.app` too, so it would leave Homekey
+and its login agent running. `just install` and `just uninstall` refuse on macOS
+for that reason. Install by hand:
 
 1. Quit the running app. If it starts at login, run `neru services uninstall`
    first so launchd does not restart it, then `neru stop`.
@@ -36,6 +38,17 @@ notices. `just install` refuses on macOS for that reason. Install by hand:
    login, run `/Applications/Homekey.app/Contents/MacOS/neru services install`.
 4. Re-grant Accessibility: System Settings > Privacy & Security >
    Accessibility, remove the old entry, then turn Homekey on.
+
+## Uninstall
+
+1. `neru services uninstall` if it starts at login, then `neru stop`.
+2. `rm -rf /Applications/Homekey.app`, and `rm /usr/local/bin/neru` if you made
+   the link.
+3. Remove Homekey from System Settings > Privacy & Security > Accessibility.
+
+Your config (`~/.config/neru`) and logs (`~/Library/Logs/neru`) stay; delete
+them by hand if you want them gone. So does the "Homekey Local Signing"
+identity, which Keychain Access can delete.
 
 ## One-time signing setup
 
@@ -115,3 +128,10 @@ Because of this, Homekey and upstream Neru cannot be installed side by side.
   `swift macos/branding/make-tray-icons.swift active.png paused.png`, then run
   `just generate-tray-icons active.png paused.png`. This writes the two
   template PNGs embedded from `internal/adapter/systray/icon/`.
+- Linux/Windows tray tile (`internal/adapter/systray/icon/tray-icon.png`, 64 px)
+  and Windows exe icon (`assets/neru-appicon.png`): cut from the same art, then
+  convert them to untagged sRGB with
+  `sips --matchTo '/System/Library/ColorSync/Profiles/sRGB Profile.icc' FILE`
+  and strip the remaining color chunks (re-encoding with Go's `image/png` does
+  it). Go's PNG decoder and go-winres ignore embedded profiles, so a Display P3
+  tile would show shifted colors there.
