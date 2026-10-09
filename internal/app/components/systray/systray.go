@@ -267,6 +267,11 @@ func (c *Component) Close() {
 	c.app.OffScrollInvertStateChanged(c.scrollInvertStateSubscriptionID)
 }
 
+// OpenSettings opens the settings window, as the Settings… menu item does. The
+// macOS reopen event calls it on the Cocoa main thread, and opening runs
+// /usr/bin/open synchronously, so it must not run inline.
+func (c *Component) OpenSettings() { go c.handleOpenSettings() }
+
 // updateMenuItems updates the systray menu items based on the current enabled state.
 func (c *Component) updateMenuItems(enabled bool) {
 	// Update icon, tooltip, and menu items to show current status
@@ -438,11 +443,6 @@ func (c *Component) handleOpenConfig() {
 
 // settingsAppName is the macOS settings window app, built by `just build-settings`.
 const settingsAppName = "NeruSettings.app"
-
-// OpenSettings opens the settings window, as the Settings… menu item does. The
-// macOS reopen event calls it on the Cocoa main thread, and opening runs
-// /usr/bin/open synchronously, so it must not run inline.
-func (c *Component) OpenSettings() { go c.handleOpenSettings() }
 
 // handleOpenSettings launches the settings app bundled in Neru.app, next to
 // the neru binary, or in /Applications. Without one it falls back to the config file.
