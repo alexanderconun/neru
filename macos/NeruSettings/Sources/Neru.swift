@@ -32,7 +32,11 @@ final class Neru: ObservableObject {
     /// version is refused with ERR_VERSION_MISMATCH.
     static func findBinary() -> String? {
         let home = NSHomeDirectory()
-        var candidates = [Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent("neru").path]
+        let parent = Bundle.main.bundleURL.deletingLastPathComponent()
+        var candidates = [
+            parent.deletingLastPathComponent().appendingPathComponent("MacOS/neru").path, // Neru.app/Contents/Helpers
+            parent.appendingPathComponent("neru").path, // next to a dev build
+        ]
         if let env = ProcessInfo.processInfo.environment["NERU_BIN"] { candidates.insert(env, at: 0) }
         candidates += [
             "/Applications/Neru.app/Contents/MacOS/neru", "/opt/homebrew/bin/neru", "/usr/local/bin/neru", "\(home)/.local/bin/neru",

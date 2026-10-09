@@ -62,6 +62,11 @@ if [ "$host" = macos ]; then
         -e "s/SHORT_VERSION/$short_version/g" \
         -e "s/BUILD_ID/$build_id/g" \
         resources/Info.plist.template >"$app/Contents/Info.plist"
+    # The settings window ships inside the app (`just build-settings`).
+    if [ -d bin/NeruSettings.app ]; then
+        mkdir -p "$app/Contents/Helpers"
+        cp -R bin/NeruSettings.app "$app/Contents/Helpers/"
+    fi
     codesign --force --deep --sign - --entitlements resources/Neru.entitlements --options runtime "$app"
 fi
 echo "✓ Release layout assembled in $out"

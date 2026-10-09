@@ -439,8 +439,8 @@ func (c *Component) handleOpenConfig() {
 // settingsAppName is the macOS settings window app, built by `just build-settings`.
 const settingsAppName = "NeruSettings.app"
 
-// handleOpenSettings launches the settings app installed next to the neru
-// binary, or in /Applications. Without one it falls back to the config file.
+// handleOpenSettings launches the settings app bundled in Neru.app, next to
+// the neru binary, or in /Applications. Without one it falls back to the config file.
 func (c *Component) handleOpenSettings() {
 	candidates := []string{filepath.Join("/Applications", settingsAppName)}
 
@@ -451,7 +451,11 @@ func (c *Component) handleOpenSettings() {
 			exe = resolved
 		}
 
-		candidates = append([]string{filepath.Join(filepath.Dir(exe), settingsAppName)}, candidates...)
+		dir := filepath.Dir(exe)
+		candidates = append([]string{
+			filepath.Join(dir, "..", "Helpers", settingsAppName), // inside Neru.app
+			filepath.Join(dir, settingsAppName),                  // next to a dev build
+		}, candidates...)
 	}
 
 	for _, path := range candidates {
