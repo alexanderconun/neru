@@ -135,9 +135,9 @@ build-settings:
     codesign --force --sign "${NERU_SIGN_IDENTITY:--}" bin/NeruSettings.app
     @echo "✓ Build complete: bin/NeruSettings.app"
 
-# Build build/dist/Homekey.app (binary, settings app, self-checks, signing) and
+# Build build/dist.noindex/Homekey.app (binary, settings app, self-checks, signing) and
 # print how to install it. Installs nothing; see HOMEKEY.md.
-[doc('Build build/dist/Homekey.app and print the manual install steps.')]
+[doc('Build build/dist.noindex/Homekey.app and print the manual install steps.')]
 app:
     bash scripts/build-app.sh
 

@@ -16,8 +16,11 @@ scripts/build-app.sh   # or: just app
 It needs Go and the Xcode command line tools. In one go it builds the
 version-stamped `neru` binary, the settings app (`NeruSettings.app`) and its
 self-checks, then runs `scripts/dist.sh` to put together and sign
-`build/dist/Homekey.app`. It installs nothing. It ends by printing the bundle
-path and the install steps below.
+`build/dist.noindex/Homekey.app`. It installs nothing. It ends by printing the
+bundle path and the install steps below. The `.noindex` folder keeps Spotlight
+from offering the build as a second Homekey: both copies share the bundle id,
+and launching a stale ad-hoc build costs the installed app its Accessibility
+grant. Only ever launch `/Applications/Homekey.app`.
 
 ## Install
 
@@ -28,12 +31,17 @@ and its login agent running. `just install` and `just uninstall` refuse on macOS
 for that reason. Install by hand:
 
 1. Quit the running app. If it starts at login, run `neru services uninstall`
-   first so launchd does not restart it, then `neru stop`.
+   first so launchd does not restart it. Then choose Quit from its menu bar
+   icon, or run `pkill -x neru`, and go on once `pgrep -x neru` prints nothing.
+   `neru stop` is not enough: it only pauses the daemon, and a paused old copy
+   keeps the `neru.sock` socket, so Homekey thinks it is already running and
+   exits without a word.
 2. Replace the app, keeping one copy, since both bundles have the same bundle id:
    `rm -rf /Applications/Neru.app /Applications/Homekey.app`, then
-   `ditto build/dist/Homekey.app /Applications/Homekey.app`. If you use the
-   CLI from a shell, point its link at the new app:
-   `ln -sfn /Applications/Homekey.app/Contents/MacOS/neru /usr/local/bin/neru`.
+   `ditto build/dist.noindex/Homekey.app /Applications/Homekey.app && rm -rf build/dist.noindex/Homekey.app`.
+   If you use the CLI from a shell, point its link at the new app:
+   `sudo ln -sfn /Applications/Homekey.app/Contents/MacOS/neru /usr/local/bin/neru`
+   (`/usr/local/bin` is root's on a stock Mac; drop `sudo` if yours is writable).
 3. Start it with `open /Applications/Homekey.app`, or, to start it at every
    login, run `/Applications/Homekey.app/Contents/MacOS/neru services install`.
 4. Re-grant Accessibility: System Settings > Privacy & Security >
@@ -41,9 +49,10 @@ for that reason. Install by hand:
 
 ## Uninstall
 
-1. `neru services uninstall` if it starts at login, then `neru stop`.
-2. `rm -rf /Applications/Homekey.app`, and `rm /usr/local/bin/neru` if you made
-   the link.
+1. `neru services uninstall` if it starts at login, then Quit from the menu
+   bar icon or `pkill -x neru` (`neru stop` only pauses it).
+2. `rm -rf /Applications/Homekey.app`, and `sudo rm -f /usr/local/bin/neru` if
+   you made the link.
 3. Remove Homekey from System Settings > Privacy & Security > Accessibility.
 
 Your config (`~/.config/neru`) and logs (`~/Library/Logs/neru`) stay; delete
@@ -72,7 +81,7 @@ signing identity in this order:
 
 After the first build signed with the stable identity, re-grant Accessibility
 once more. From then on rebuilds keep the grant. To check which identity a
-build used, run `codesign -d -r- build/dist/Homekey.app`: its designated requirement names a
+build used, run `codesign -d -r- /Applications/Homekey.app`: its designated requirement names a
 certificate, not a `cdhash`. The first signing may ask to use the key. Enter
 your login password and click Always Allow.
 
