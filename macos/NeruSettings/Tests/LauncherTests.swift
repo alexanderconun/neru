@@ -57,7 +57,9 @@ func runLauncherTests() {
     assert(Neru.applyLaunchers(chained, to: dump)?["Primary+Shift+Space"] == ["hints --action left_click"])
 
     // Conflicts: anything else bound refuses, a role's own combo does not.
-    assert(Neru.launcherConflict("Primary+Shift+G", for: .search, in: dump) == "⌘⇧G is already used by \"grid\". Change or clear that one first.")
+    // A mode's recorder has no clear button, so the message says only "Change".
+    assert(Neru.launcherConflict("Primary+Shift+G", for: .search, in: dump) == "⌘⇧G is already used by \"grid\". Change that one first.")
+    assert(Neru.launcherConflict("Ctrl+Alt+R", for: .main, in: dump)?.hasSuffix("Change or clear that one first.") == true)
     assert(Neru.launcherConflict("Ctrl+Alt+S", for: .main, in: dump)?.contains("the search shortcut") == true)
     assert(Neru.launcherConflict("Ctrl+Alt+H", for: .main, in: dump)?.contains("hints --role AXButton") == true)
     assert(Neru.launcherConflict("ctrl+alt+r", for: .rightClick, in: dump) == nil)

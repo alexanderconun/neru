@@ -56,7 +56,11 @@ struct ClickingPage: View {
                 }
             }
             Section("Labels") {
-                TextRow(title: "Label characters", key: "hints.hint_characters")
+                // A key bound while labels show is matched first, so a label holding it could never be typed.
+                CheckedTextRow(title: "Label characters", help: "The keys labels are made of.",
+                               saved: neru.string("hints.hint_characters"),
+                               problem: { Neru.gridCharactersProblem($0, bound: neru.hotkeys("hints")) },
+                               commit: { neru.set("hints.hint_characters", $0) })
             }
             Section("While labels are showing") {
                 let table = (neru.value("hints.hotkeys") as? [String: Any] ?? [:]).compactMapValues { $0 as? [String] }
@@ -80,9 +84,7 @@ struct ClickingPage: View {
 
     private func launcherToggle(_ title: String, _ flag: WritableKeyPath<Neru.Launchers, Bool>, help: String) -> some View {
         Toggle(isOn: Binding(get: { neru.launchers[keyPath: flag] }, set: { on in
-            var set = neru.launchers
-            set[keyPath: flag] = on
-            neru.setLaunchers(set)
+            neru.setLaunchers { set, _ in set[keyPath: flag] = on }
         })) {
             HelpLabel(title, help: help)
         }

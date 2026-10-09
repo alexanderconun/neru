@@ -36,34 +36,6 @@ struct SettingToggle: View {
     }
 }
 
-/// Commits on Return or when focus leaves, not on every keystroke.
-struct TextRow: View {
-    @EnvironmentObject var neru: Neru
-    let title: String
-    let key: String
-    @State private var text = ""
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        LabeledContent(title) {
-            TextField(title, text: $text)
-                .labelsHidden()
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 240)
-                .focused($focused)
-                .onSubmit(commit)
-                .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
-        }
-        .onAppear { text = neru.string(key) }
-        .onChange(of: neru.string(key)) { _, saved in if !focused { text = saved } } // snaps back if refused
-    }
-
-    private func commit() {
-        guard text != neru.string(key) else { return }
-        neru.set(key, text)
-    }
-}
-
 /// Writes once the drag ends, so the daemon sees one change, not fifty.
 struct SliderRow: View {
     @EnvironmentObject var neru: Neru
@@ -75,13 +47,15 @@ struct SliderRow: View {
     let high: Image
     var help: String?
     @State private var value = 0.0
+    @State private var editing = false
 
     var body: some View {
         LabeledContent {
             HStack {
                 low.foregroundStyle(.secondary)
-                Slider(value: $value, in: range, step: step) { editing in
-                    if !editing { neru.set(key, String(Int(value)), local: Int(value)) }
+                Slider(value: $value, in: range, step: step) { isEditing in
+                    editing = isEditing
+                    if !isEditing, Int(value) != Int(neru.double(key)) { neru.set(key, String(Int(value)), local: Int(value)) }
                 }
                 .frame(maxWidth: 260)
                 high.foregroundStyle(.secondary)
@@ -89,7 +63,11 @@ struct SliderRow: View {
         } label: {
             HelpLabel(title, help: help)
         }
-        .onAppear { value = min(max(neru.double(key), range.lowerBound), range.upperBound) }
+        // Follows the saved value: the first dump lands after the page is
+        // drawn, and a refused value snaps back. Not while being dragged.
+        .onChange(of: neru.double(key), initial: true) { _, saved in
+            if !editing { value = min(max(saved, range.lowerBound), range.upperBound) }
+        }
     }
 }
 

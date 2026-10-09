@@ -45,22 +45,16 @@ extension Neru {
         editAppConfigs { (Self.removing($0, id), Self.removing($1, id)) }
     }
 
-    /// Shows `change` at once, then applies it again on the CLI queue to a
-    /// fresh dump, so queued edits build on each other and never on a dump
-    /// that went stale while they waited. The daemon reads config.toml only
-    /// when told to, so it reloads first: blocks added to the file by hand
-    /// since are kept, and a file it refuses stops the edit.
+    /// Shows `change` at once, then applies it again to the fresh dump
+    /// `editConfigText` hands over, so queued edits build on each other and
+    /// blocks added to the file by hand since are kept.
     // ponytail: while edits are queued, a dump landing in between can show an
     // older list for a moment; the last dump settles it.
     private func editAppConfigs(_ change: @escaping ([[String: Any]], [[String: Any]]) -> AppConfigs) {
         let shown = change(appConfigs("hints"), appConfigs("scroll"))
         setLocal("hints.app_configs", shown.hints)
         setLocal("scroll.app_configs", shown.scroll)
-        editConfigText { text in
-            let reload = self.run(["config", "reload"])
-            guard reload.ok else { throw CLIError(errorDescription: reload.out) }
-            let dump = self.run(["config", "dump"])
-            guard dump.ok, let fresh = Self.json(dump.out) else { throw CLIError(errorDescription: dump.out) }
+        editConfigText { text, fresh in
             let next = change(Self.appConfigs(fresh, "hints"), Self.appConfigs(fresh, "scroll"))
             return Self.writeAppConfigs(text, hints: next.hints, scroll: next.scroll)
         }
@@ -152,8 +146,4 @@ extension Neru {
     static func tomlArray(_ list: [String]) -> String {
         "[" + list.map(tomlString).joined(separator: ", ") + "]"
     }
-}
-
-private struct CLIError: LocalizedError {
-    let errorDescription: String?
 }

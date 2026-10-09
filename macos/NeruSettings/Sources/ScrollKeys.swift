@@ -39,8 +39,10 @@ extension Neru {
     }
 
     /// A mode's hotkeys as the daemon has them: key → steps.
-    func hotkeys(_ mode: String) -> [String: [String]] {
-        value("\(mode).hotkeys") as? [String: [String]] ?? [:]
+    func hotkeys(_ mode: String) -> [String: [String]] { Self.hotkeys(mode, in: config) }
+
+    static func hotkeys(_ mode: String, in dump: [String: Any]) -> [String: [String]] {
+        value("\(mode).hotkeys", in: dump) as? [String: [String]] ?? [:]
     }
 
     /// The scroll keys as the window shows them, left, down, up, right: "HJKL".
@@ -56,7 +58,11 @@ extension Neru {
         for key in Self.directionKeys(bindings).joined() { local[key] = nil }
         for (key, dir) in zip(keys.lowercased(), Self.scrollDirections) { local[String(key)] = ["action scroll_\(dir)"] }
         setLocal("scroll.hotkeys", local)
-        editConfigText { Self.rewriteScrollKeys($0, to: keys, bindings: bindings) }
+        editConfigText { text, fresh in
+            let bindings = Self.hotkeys("scroll", in: fresh)
+            if let problem = Self.scrollKeysProblem(keys, bindings: bindings) { throw ConfigEditError(errorDescription: problem) }
+            return Self.rewriteScrollKeys(text, to: keys, bindings: bindings)
+        }
     }
 
     func setArrowsScroll(_ scroll: Bool) {
@@ -65,7 +71,7 @@ extension Neru {
             local[key] = [scroll ? "action scroll_\(dir)" : Self.defaultScrollHotkeys[key]!]
         }
         setLocal("scroll.hotkeys", local)
-        editConfigText { Self.rewriteArrows($0, scroll: scroll) }
+        editConfigText { text, _ in Self.rewriteArrows(text, scroll: scroll) }
     }
 
     // MARK: pure helpers (covered by Tests/ScrollTests.swift)
@@ -147,13 +153,6 @@ extension Neru {
         return tableKeys(edited, header: "scroll.hotkeys").isEmpty
             ? editTable(toml, header: "scroll.hotkeys", removing: spellings(arrowKeys), adding: lines)
             : edited
-    }
-
-    /// The keys of the `[header]` table, empty when it is missing.
-    static func tableKeys(_ toml: String, header: String) -> [String] {
-        let lines = toml.components(separatedBy: "\n")
-        guard let start = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "[\(header)]" }) else { return [] }
-        return lines[(start + 1)...].prefix { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("[") }.compactMap(tomlKey)
     }
 
     /// Keys normalize case-insensitively, so the file may spell one any way.

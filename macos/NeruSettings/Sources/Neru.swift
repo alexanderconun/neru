@@ -23,9 +23,6 @@ final class Neru: ObservableObject {
 
     /// The display name shown everywhere the app names itself.
     static let appName = "Homekey"
-    /// The daemon's bundle identifier, kept from upstream so permissions,
-    /// the login item and the config folder carry over.
-    static let daemonBundleID = "com.y3owk1n.neru"
 
     // ponytail: mirrors the [hotkeys] defaults in internal/config/config_defaults.go;
     // needed to know when an old binding must be written as __disabled__.
@@ -114,25 +111,27 @@ final class Neru: ObservableObject {
 
     private func apply(_ dump: (ok: Bool, out: String)) {
         running = dump.ok
-        notRunningReason = dump.ok ? "" : dump.out
-        needsAccessibility = Self.isWaitingForAccessibility(dumpOK: dump.ok, output: dump.out,
-                                                            daemonAlive: Self.daemonProcessAlive())
+        notRunningReason = dump.ok ? "" : Self.notRunningReason(dump.out)
+        needsAccessibility = Self.isWaitingForAccessibility(dumpOK: dump.ok, output: dump.out)
         if dump.ok { config = Self.json(dump.out) ?? [:] }
     }
 
     /// A daemon blocked at its permission prompt answers every command with
-    /// ERR_ACCESSIBILITY_DENIED. An older daemon has no socket at all while it
-    /// waits, so a live process that does not answer means the same.
-    static func isWaitingForAccessibility(dumpOK: Bool, output: String, daemonAlive: Bool) -> Bool {
-        if dumpOK { return false }
-        if output.contains("ERR_ACCESSIBILITY_DENIED") { return true }
-        return daemonAlive && output.contains("IPC_SERVER_NOT_RUNNING")
+    /// ERR_ACCESSIBILITY_DENIED. A live daemon with no socket is at another
+    /// alert (an invalid config, onboarding), which says so itself.
+    static func isWaitingForAccessibility(dumpOK: Bool, output: String) -> Bool {
+        !dumpOK && output.contains("ERR_ACCESSIBILITY_DENIED")
     }
 
-    static func daemonProcessAlive() -> Bool {
-        NSWorkspace.shared.runningApplications.contains {
-            $0.bundleIdentifier == daemonBundleID || $0.executableURL?.lastPathComponent == "neru"
+    /// Why the window can't reach the daemon, in words for the cases a user
+    /// can act on; anything else as the CLI said it.
+    static func notRunningReason(_ output: String) -> String {
+        if output.contains("IPC_SERVER_NOT_RUNNING") { return "\(appName) isn't running." }
+        // Another build answers on the same socket and refuses this one's CLI.
+        if output.contains("VERSION_MISMATCH") {
+            return "Another version of \(appName) is running. Quit it from its menu bar icon, then start this one."
         }
+        return "Can't reach \(appName): \(output)"
     }
 
     static let accessibilitySettingsURL =
@@ -158,10 +157,12 @@ final class Neru: ObservableObject {
     // MARK: reading
 
     /// Reads a dotted TOML path ("hints.ui.font_size") from the camelCase dump.
-    func value(_ key: String) -> Any? {
-        var node: Any? = config
+    func value(_ key: String) -> Any? { Self.value(key, in: config) }
+
+    static func value(_ key: String, in dump: [String: Any]) -> Any? {
+        var node: Any? = dump
         for part in key.split(separator: ".") {
-            node = (node as? [String: Any])?[Self.camel(String(part))]
+            node = (node as? [String: Any])?[camel(String(part))]
         }
         return node
     }
@@ -217,12 +218,15 @@ final class Neru: ObservableObject {
 
     func setLaunchAtLogin(_ on: Bool) {
         launchAtLogin = on
+        // Uninstalling boots the login agent out, which quits a daemon it started.
+        let restart = !on && running
         queue.async {
             let result = self.run(["services", on ? "install" : "uninstall"])
             let login = self.run(["services", "status"]).out == "Service loaded"
             DispatchQueue.main.async {
                 if !result.ok { self.error = result.out }
                 self.launchAtLogin = login
+                if restart { self.start() }
             }
         }
     }
@@ -230,50 +234,69 @@ final class Neru: ObservableObject {
     // MARK: hotkeys
 
     func shortcut(for mode: String) -> String? {
-        combos(for: mode).first
+        hotkeyBindings.filter { $0.value == [mode] }.keys.min()
     }
 
-    private func combos(for mode: String) -> [String] {
-        let bindings = value("hotkeys.bindings") as? [String: Any] ?? [:]
-        return bindings.filter { ($0.value as? [String]) == [mode] }.keys.sorted()
-    }
-
-    /// Rebinds `mode` to `combo` in the [hotkeys] table of config.toml.
+    /// Rebinds `mode` to `combo` in the [hotkeys] table of config.toml. A
+    /// combo bound to anything else is refused rather than overwritten, as on
+    /// the Clicking page.
     func setShortcut(_ combo: String, for mode: String) {
-        let current = combos(for: mode)
-        var bindings = value("hotkeys.bindings") as? [String: Any] ?? [:]
-        for old in current { bindings[old] = nil }
+        let owns: ([String]) -> Bool = { $0 == [mode] }
+        var bindings = hotkeyBindings
+        if let conflict = Self.shortcutConflict(combo, in: bindings, owns: owns) { error = conflict; return }
+        bindings = bindings.filter { $0.value != [mode] }
         bindings[combo] = [mode]
         setLocal("hotkeys.bindings", bindings)
-        editConfigText { Self.rebind($0, mode: mode, to: combo, replacing: current) }
+        editConfigText { text, fresh in
+            let bindings = Self.hotkeyBindings(in: fresh)
+            if let conflict = Self.shortcutConflict(combo, in: bindings, owns: owns) { throw ConfigEditError(errorDescription: conflict) }
+            return Self.rebind(text, mode: mode, to: combo, in: bindings)
+        }
     }
 
     /// Pauses Neru so its own hotkeys don't swallow the keys being recorded.
     /// Leaves Neru paused afterwards if the user had paused it themselves.
+    /// Counted: with two recorders open at once, only the first pause reads
+    /// whether Neru was running and only the last resume restarts it.
     func pause(_ paused: Bool) {
         queue.async {
             if paused {
+                self.pauseDepth += 1
+                guard self.pauseDepth == 1 else { return }
                 self.pausedForRecording = Self.json(self.run(["status", "--json"]).out)?["enabled"] as? Bool ?? false
                 if self.pausedForRecording { self.run(["stop"]) }
-            } else if self.pausedForRecording {
-                self.run(["start"])
-                self.pausedForRecording = false
+            } else if self.pauseDepth > 0 {
+                self.pauseDepth -= 1
+                if self.pauseDepth == 0, self.pausedForRecording {
+                    self.run(["start"])
+                    self.pausedForRecording = false
+                }
             }
         }
     }
 
     private var pausedForRecording = false
+    private var pauseDepth = 0
 
     // MARK: helpers
 
     /// Returns `toml` with `mode` bound to `combo` in its [hotkeys] table.
-    /// `current` is every combo the daemon has bound to `mode` right now.
-    static func rebind(_ toml: String, mode: String, to combo: String, replacing current: [String]) -> String {
-        let old = current.filter { $0 != combo }
-        // A default left out of the file comes back, so it has to be disabled.
-        let disabled = old.filter { defaultHotkeys[$0] != nil }.map { tomlLine($0, "__disabled__") }
-        return editTable(toml, header: "hotkeys", removing: Set(old + [combo]),
-                         adding: [tomlLine(combo, mode)] + disabled)
+    /// `bindings` is the daemon's [hotkeys] as dumped; every combo it binds to
+    /// `mode` is given up. A default given up is disabled, or it would come
+    /// back. The caller has refused a `combo` bound to anything else.
+    static func rebind(_ toml: String, mode: String, to combo: String, in bindings: [String: [String]]) -> String {
+        var freed = Set(bindings.filter { $0.value == [mode] }.keys.map(comboKey))
+        // Nothing bound: an empty [hotkeys] table unbinds every shortcut (the
+        // skhd setup), and any line written brings the defaults back.
+        if bindings.isEmpty { freed.formUnion(defaultHotkeys.keys.map(comboKey)) }
+        freed.remove(comboKey(combo))
+        let disabled = defaultHotkeys.keys.sorted().filter { freed.contains(comboKey($0)) }
+        // Matched by chord, not spelling, so a stale "__disabled__" or another
+        // spelling of a combo being written is replaced rather than duplicated.
+        let touched = freed.union([comboKey(combo)])
+        return editTable(toml, header: "hotkeys",
+                         removing: Set(tableKeys(toml, header: "hotkeys").filter { touched.contains(comboKey($0)) }),
+                         adding: [tomlLine(combo, mode)] + disabled.map { tomlLine($0, "__disabled__") })
     }
 
     static func camel(_ snake: String) -> String {

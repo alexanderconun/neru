@@ -126,7 +126,7 @@ extension Neru {
     /// combo given up is disabled, or its default binding would come back.
     static func rewriteLaunchers(_ toml: String, in bindings: [String: [String]], to set: Launchers) -> String {
         let lines = LauncherRole.allCases.compactMap { role in set.combos[role].map { ($0, launcherCommand(role, set)) } }
-        let keys = hotkeysTableKeys(toml)
+        let keys = tableKeys(toml, header: "hotkeys")
         let taken = Set(lines.map { comboKey($0.0) })
         var freed = Set(launchers(in: bindings).combos.values.map(comboKey))
         if bindings.isEmpty {
@@ -150,26 +150,21 @@ extension Neru {
                          adding: lines.map { tomlLine($0.0, $0.1) } + disabled.map { tomlLine($0, "__disabled__") })
     }
 
-    /// The keys of the [hotkeys] table only: a chord bound in [hints.hotkeys]
-    /// says nothing about the global shortcuts.
-    static func hotkeysTableKeys(_ toml: String) -> [String] {
-        var inTable = false
-        return toml.components(separatedBy: "\n").compactMap { line in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("[") { inTable = trimmed == "[hotkeys]"; return nil }
-            return inTable ? tomlKey(line) : nil
-        }
-    }
-
     /// Why `combo` cannot become `role`'s shortcut, or nil when it is free
     /// (or already one of `role`'s own).
     static func launcherConflict(_ combo: String, for role: LauncherRole, in bindings: [String: [String]]) -> String? {
-        guard let hit = bindings.first(where: { comboKey($0.key) == comboKey(combo) }) else { return nil }
+        shortcutConflict(combo, in: bindings) { parseLauncher($0)?.role == role }
+    }
+
+    /// Why `combo` cannot be recorded, or nil when it is free or bound to a
+    /// command `owns` says is the recorder's own. Every recorder refuses a
+    /// taken combo: writing it would delete whatever line holds it.
+    static func shortcutConflict(_ combo: String, in bindings: [String: [String]], owns: ([String]) -> Bool) -> String? {
+        guard let hit = bindings.first(where: { comboKey($0.key) == comboKey(combo) }), !owns(hit.value) else { return nil }
         let owner = parseLauncher(hit.value)?.role
-        if owner == role { return nil }
         let user = owner.map { "the \($0.title.lowercased())" } ?? "\"\(hit.value.joined(separator: "\", \""))\""
-        // The main launcher has no clear button.
-        let fix = owner == .main ? "Change" : "Change or clear"
+        // Only the search, right- and double-click shortcuts have a clear button.
+        let fix = owner == nil || owner == .main ? "Change" : "Change or clear"
         return "\(Shortcut.display(hit.key)) is already used by \(user). \(fix) that one first."
     }
 
@@ -232,8 +227,10 @@ extension Neru {
 
     // MARK: reading and writing
 
-    var hotkeyBindings: [String: [String]] {
-        (value("hotkeys.bindings") as? [String: Any] ?? [:]).compactMapValues { $0 as? [String] }
+    var hotkeyBindings: [String: [String]] { Self.hotkeyBindings(in: config) }
+
+    static func hotkeyBindings(in dump: [String: Any]) -> [String: [String]] {
+        (value("hotkeys.bindings", in: dump) as? [String: Any] ?? [:]).compactMapValues { $0 as? [String] }
     }
 
     var launchers: Launchers { Self.launchers(in: hotkeyBindings) }
@@ -249,24 +246,33 @@ extension Neru {
         return launchers(in: next) == current ? nil : next
     }
 
-    /// Rewrites the whole managed launcher set as `set`.
-    func setLaunchers(_ set: Launchers) {
+    /// Rewrites the managed launcher set as `change` makes it. The change is
+    /// shown at once, then applied again to the fresh dump `editConfigText`
+    /// hands over, so it never undoes a launcher moved by hand since. It gets
+    /// that dump's [hotkeys] bindings and throws to refuse.
+    func setLaunchers(_ change: @escaping (inout Launchers, [String: [String]]) throws -> Void) {
         let bindings = hotkeyBindings
+        var set = Self.launchers(in: bindings)
+        do { try change(&set, bindings) } catch { self.error = error.localizedDescription; return }
         guard let next = Self.applyLaunchers(set, to: bindings) else { return }
         setLocal("hotkeys.bindings", next)
-        editConfigText { Self.rewriteLaunchers($0, in: bindings, to: set) }
+        editConfigText { text, fresh in
+            let bindings = Self.hotkeyBindings(in: fresh)
+            var set = Self.launchers(in: bindings)
+            try change(&set, bindings)
+            guard Self.applyLaunchers(set, to: bindings) != nil else { return text }
+            return Self.rewriteLaunchers(text, in: bindings, to: set)
+        }
     }
 
     /// Moves `role` to `combo`, or removes it when nil. A combo bound to
     /// anything else is refused rather than overwritten.
     func setLauncher(_ role: LauncherRole, to combo: String?) {
-        if let combo, let conflict = Self.launcherConflict(combo, for: role, in: hotkeyBindings) {
-            error = conflict
-            return
+        setLaunchers { set, bindings in
+            if let combo, let conflict = Self.launcherConflict(combo, for: role, in: bindings) {
+                throw ConfigEditError(errorDescription: conflict)
+            }
+            if combo.map(Self.comboKey) != set.combos[role].map(Self.comboKey) { set.combos[role] = combo }
         }
-        var set = launchers
-        if combo.map(Self.comboKey) == set.combos[role].map(Self.comboKey) { return }
-        set.combos[role] = combo
-        setLaunchers(set)
     }
 }

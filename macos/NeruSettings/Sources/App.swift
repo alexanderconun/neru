@@ -68,23 +68,25 @@ struct ContentView: View {
                     Banner(text: "\(Neru.appName) needs Accessibility permission. Turn \(Neru.appName) on in System Settings; it starts on its own once you do.",
                            action: ("Open System Settings", { NSWorkspace.shared.open(Neru.accessibilitySettingsURL) }))
                 } else if !neru.running {
-                    Banner(text: "Can't reach \(Neru.appName): \(neru.notRunningReason)",
-                           action: ("Start \(Neru.appName)", neru.start))
+                    Banner(text: neru.notRunningReason, action: ("Start \(Neru.appName)", neru.start))
                 }
                 if let error = neru.error {
                     Banner(text: error, action: ("Dismiss", { neru.error = nil }))
                 }
-                switch page {
-                case .general: GeneralPage()
-                case .clicking: ClickingPage()
-                case .scrolling: ScrollingPage()
-                case .grid: GridPage()
-                case .perApp: PerAppPage()
-                case .ignored: IgnoredAppsPage()
-                case .about: AboutPage()
+                // Only the page: the banners' buttons are for exactly this state.
+                Group {
+                    switch page {
+                    case .general: GeneralPage()
+                    case .clicking: ClickingPage()
+                    case .scrolling: ScrollingPage()
+                    case .grid: GridPage()
+                    case .perApp: PerAppPage()
+                    case .ignored: IgnoredAppsPage()
+                    case .about: AboutPage()
+                    }
                 }
+                .disabled(!neru.running && page != .about)
             }
-            .disabled(!neru.running && page != .about)
             .navigationTitle(page.rawValue)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in

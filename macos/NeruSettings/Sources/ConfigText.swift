@@ -13,19 +13,35 @@ extension Neru {
     /// text, write it, reload. On failure (or when `transform` throws) the file
     /// is left untouched and the error is shown. The caller updates the window
     /// first with `setLocal`.
-    func editConfigText(_ transform: @escaping (String) throws -> String) {
+    ///
+    /// `transform` gets the file and a fresh `config dump` of it, and works out
+    /// its change from that dump, never from what the window showed: the
+    /// daemon reads config.toml only when told to, so it reloads first, and
+    /// lines written by hand since are kept. A file it refuses stops the edit.
+    func editConfigText(_ transform: @escaping (String, [String: Any]) throws -> String) {
         // Still reloads, so the caller's setLocal does not stay on screen.
         guard !configPath.isEmpty else { background { "\(Self.appName) is running without a config file" }; return }
         let path = configPath
+        // A symlinked config.toml (stow, home-manager) is edited where it
+        // points; replacing the link would cut it off from its dotfiles copy.
+        let target = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
         error = nil
         background {
-            let text = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+            let reload = self.run(["config", "reload"])
+            guard reload.ok else { return reload.out }
+            let dump = self.run(["config", "dump"])
+            guard dump.ok, let fresh = Self.json(dump.out) else { return dump.out }
+            let text: String
+            do { text = try String(contentsOfFile: target, encoding: .utf8) } catch {
+                return "Could not read \(path): \(error.localizedDescription)"
+            }
             let updated: String
-            do { updated = try transform(text) } catch { return error.localizedDescription }
+            do { updated = try transform(text, fresh) } catch { return error.localizedDescription }
             if updated == text { return nil }
+            // Beside `path`, not `target`: the daemon reads the override next to the link.
             if let problem = self.validate(updated, beside: path) { return problem }
             do {
-                try updated.write(toFile: path, atomically: true, encoding: .utf8)
+                try updated.write(toFile: target, atomically: true, encoding: .utf8)
             } catch {
                 return error.localizedDescription
             }
@@ -61,14 +77,14 @@ extension Neru {
     /// when missing. Comments and every other line are kept as they are.
     static func editTable(_ toml: String, header: String, removing keys: Set<String>, adding lines: [String]) -> String {
         var all = toml.components(separatedBy: "\n")
-        var headerIndex = all.firstIndex { $0.trimmingCharacters(in: .whitespaces) == "[\(header)]" }
+        var headerIndex = all.firstIndex { tableName($0) == header }
         if headerIndex == nil {
             if all.last?.isEmpty == false { all.append("") }
             all.append("[\(header)]")
             headerIndex = all.count - 1
         }
         let start = headerIndex! + 1
-        let end = all[start...].firstIndex { $0.trimmingCharacters(in: .whitespaces).hasPrefix("[") } ?? all.count
+        let end = all[start...].firstIndex { tableName($0) != nil } ?? all.count
         var section: [String] = []
         var open = 0 // brackets a removed key's multi-line array still has open
         for line in all[start..<end] {
@@ -79,6 +95,13 @@ extension Neru {
         section.insert(contentsOf: lines, at: 0)
         all.replaceSubrange(start..<end, with: section)
         return all.joined(separator: "\n")
+    }
+
+    /// The keys of the `[header]` table, empty when it is missing.
+    static func tableKeys(_ toml: String, header: String) -> [String] {
+        let lines = toml.components(separatedBy: "\n")
+        guard let start = lines.firstIndex(where: { tableName($0) == header }) else { return [] }
+        return lines[(start + 1)...].prefix { tableName($0) == nil }.compactMap(tomlKey)
     }
 
     /// Returns `toml` with every `[[name]]` block (and any `[name.*]` sub-table)
@@ -177,4 +200,9 @@ extension Neru {
         }
         return out + "\""
     }
+}
+
+/// A refusal from inside an `editConfigText` transform, shown as the error.
+struct ConfigEditError: LocalizedError {
+    let errorDescription: String?
 }

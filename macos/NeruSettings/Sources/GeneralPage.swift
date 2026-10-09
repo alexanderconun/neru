@@ -25,6 +25,7 @@ struct GeneralPage: View {
                 }
                 SettingToggle(title: "Show menubar icon", key: "systray.enabled",
                               help: "Hiding it also hides the menu that opens this window. Open \(Neru.appName) from Applications again to get back here.")
+                Text("The menubar icon changes the next time \(Neru.appName) starts.").font(.caption).foregroundStyle(.secondary)
                 SettingToggle(title: "Hide labels in screen sharing", key: "general.hide_overlay_in_screen_share",
                               help: "Keeps labels out of screen recordings and shared screens.")
             }

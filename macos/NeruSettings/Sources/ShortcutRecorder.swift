@@ -12,7 +12,8 @@ enum Shortcut {
     ]
 
     /// nil when the event has no modifier or no usable key: a global hotkey
-    /// without a modifier would steal the key from every app.
+    /// without a modifier would steal the key from every app. Shift alone
+    /// counts as none (capitals, selecting, Shift+Tab), except on F-keys.
     static func from(_ event: NSEvent) -> String? {
         let flags = event.modifierFlags
         var parts: [String] = []
@@ -22,7 +23,7 @@ enum Shortcut {
         if flags.contains(.control) { parts.append("Ctrl") }
         if flags.contains(.option) { parts.append("Alt") }
         if flags.contains(.shift) { parts.append("Shift") }
-        guard !parts.isEmpty else { return nil }
+        guard !parts.isEmpty, parts != ["Shift"] || namedKeys[event.keyCode]?.first == "F" else { return nil }
 
         let key = namedKeys[event.keyCode]
             ?? event.characters(byApplyingModifiers: [])?.uppercased()
