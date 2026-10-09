@@ -10,16 +10,18 @@ import Foundation
 /// run on all defaults at its next start, so nothing unvalidated is written.
 extension Neru {
     /// Applies `transform` to config.toml in the background: validate the new
-    /// text, write it, reload. On failure the file is left untouched and the
-    /// error is shown. The caller updates the window first with `setLocal`.
-    func editConfigText(_ transform: @escaping (String) -> String) {
+    /// text, write it, reload. On failure (or when `transform` throws) the file
+    /// is left untouched and the error is shown. The caller updates the window
+    /// first with `setLocal`.
+    func editConfigText(_ transform: @escaping (String) throws -> String) {
         // Still reloads, so the caller's setLocal does not stay on screen.
         guard !configPath.isEmpty else { background { "\(Self.appName) is running without a config file" }; return }
         let path = configPath
         error = nil
         background {
             let text = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
-            let updated = transform(text)
+            let updated: String
+            do { updated = try transform(text) } catch { return error.localizedDescription }
             if updated == text { return nil }
             if let problem = self.validate(updated, beside: path) { return problem }
             do {
@@ -81,21 +83,41 @@ extension Neru {
 
     /// Returns `toml` with every `[[name]]` block (and any `[name.*]` sub-table)
     /// removed and `blocks` appended at the end, each one a full block of
-    /// lines starting with its `[[name]]` header.
+    /// lines starting with its `[[name]]` header. Comments right above the
+    /// table that follows a removed block belong to that table and are kept.
     static func replaceArrayTables(_ toml: String, name: String, blocks: [[String]]) -> String {
         var kept: [String] = []
+        var gap: [String] = [] // comment lines (and blanks after them) since a removed block's last key
         var skipping = false
         for line in toml.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("[") {
-                let headerName = trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "[] "))
-                skipping = headerName == name || headerName.hasPrefix(name + ".")
+            if let header = tableName(line) {
+                let ours = header == name || header.hasPrefix(name + ".")
+                if skipping, !ours { kept += gap }
+                skipping = ours
+                gap = []
             }
-            if !skipping { kept.append(line) }
+            if !skipping { kept.append(line); continue }
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasPrefix("#") || (trimmed.isEmpty && !gap.isEmpty) {
+                gap.append(line)
+            } else if !trimmed.isEmpty {
+                gap = []
+            }
         }
-        while kept.last?.trimmingCharacters(in: .whitespaces).isEmpty == true { kept.removeLast() }
+        while kept.last?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true { kept.removeLast() }
         for block in blocks { kept += [""] + block }
         return kept.joined(separator: "\n") + "\n"
+    }
+
+    /// The name in a `[name]` or `[[name]]` header line, nil for any other
+    /// line. A trailing comment and a CRLF line end are ignored.
+    // ponytail: cuts at the first #, so a quoted name containing # comes out
+    // wrong; fine for matching our own unquoted table names.
+    static func tableName(_ line: String) -> String? {
+        let header = line.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)[0]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard header.hasPrefix("[") else { return nil }
+        return header.trimmingCharacters(in: CharacterSet(charactersIn: "[] "))
     }
 
     /// The key of a `key = value` line, unquoted, or nil for anything else.

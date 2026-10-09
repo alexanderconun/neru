@@ -105,7 +105,8 @@ final class Neru: ObservableObject {
             DispatchQueue.main.async {
                 self.version = version
                 self.launchAtLogin = login
-                if let path { self.configPath = path }
+                // Without a file the daemon says "using default config" here.
+                if let path { self.configPath = path.hasPrefix("/") ? path : "" }
                 self.apply(dump)
             }
         }
