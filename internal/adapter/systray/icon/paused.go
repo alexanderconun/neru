@@ -41,8 +41,8 @@ const (
 // can never drift — the paused tile is the running tile by construction, and a
 // new brand tile needs no second export. macOS answers this question with a
 // pair of hand-drawn template glyphs instead (see trayicon_darwin.go); those
-// are white-on-transparent and would be invisible in a tray host that renders
-// icon bytes literally, which is the whole reason this derivation exists.
+// are bare alpha masks and would vanish in a tray host that renders icon
+// bytes literally, which is the whole reason this derivation exists.
 //
 // The derivation runs at most once, on the first paused state of the process:
 // the tray sets an icon on every toggle, and a decode-transform-encode per

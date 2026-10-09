@@ -2,17 +2,18 @@ package icon
 
 import _ "embed"
 
-// Brand is the colored Neru tray tile as PNG bytes. It is the icon for hosts
+// Brand is the colored Homekey tray tile as PNG bytes. It is the icon for hosts
 // that render tray images literally (Windows notification area, Linux SNI):
-// the monochrome template glyph below is white-on-transparent and would be
-// invisible there.
+// the monochrome template glyph below is a bare alpha mask and would vanish
+// against a dark tray there.
 //
 //go:embed tray-icon.png
 var Brand []byte
 
 // Template is the monochrome menu-bar glyph as PNG bytes: 44×44 px
-// (22 pt @2x), white on transparent. macOS renders it as a template image and
-// adapts it to the current menu bar appearance (light/dark).
+// (22 pt @2x), black on transparent. macOS renders it as a template image,
+// reading only its alpha, and adapts it to the menu bar appearance
+// (light/dark). Drawn by macos/branding/make-tray-icons.swift.
 //
 //go:embed tray-icon-template.png
 var Template []byte
