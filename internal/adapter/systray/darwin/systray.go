@@ -24,6 +24,9 @@ var (
 	nextID  = 1
 	onReady func()
 	onExit  func()
+	// onReopen is a raw package variable like onReady, not a cgoSlot: this
+	// package may not import platform/darwin, where cgoSlot lives.
+	onReopen func()
 )
 
 // MenuItem is a menu item in the system tray.
@@ -83,6 +86,11 @@ func RunHeadless(onReadyFunc, onExitFunc func()) {
 	onExit = onExitFunc
 	C.NeruNativeLoopHeadless()
 }
+
+// SetReopenHandler sets what runs when the app is opened again while it runs
+// (Finder, Spotlight, `open -a`). Set it before Run: it is read unsynchronized
+// on the Cocoa main thread, so fn must not block.
+func SetReopenHandler(fn func()) { onReopen = fn }
 
 // Quit quits the application.
 func Quit() {
@@ -235,6 +243,13 @@ func systray_on_exit() {
 	}
 }
 
+//export systray_on_reopen
+func systray_on_reopen() {
+	if onReopen != nil {
+		onReopen()
+	}
+}
+
 //export systray_menu_item_selected
 func systray_menu_item_selected(id C.int) {
 	menuItemsLock.RLock()
@@ -268,4 +283,5 @@ func ResetForTesting() {
 	nextID = 1
 	onReady = nil
 	onExit = nil
+	onReopen = nil
 }

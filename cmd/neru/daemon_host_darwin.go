@@ -32,6 +32,8 @@ func (darwinDaemonHost) Run(application *app.App) error {
 
 	systrayComponent := application.GetSystrayComponent()
 	if systrayComponent != nil {
+		// Opening the app again while it runs shows the settings window.
+		systray.SetReopenHandler(systrayComponent.OpenSettings)
 		systray.Run(systrayComponent.OnReady, systrayComponent.OnExit)
 	} else {
 		systray.RunHeadless(func() {}, func() {})

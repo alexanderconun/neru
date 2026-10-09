@@ -24,6 +24,11 @@ func Run(onReady, onExit func()) { darwin.Run(onReady, onExit) }
 // RunHeadless starts the tray without a visible icon.
 func RunHeadless(onReady, onExit func()) { darwin.RunHeadless(onReady, onExit) }
 
+// SetReopenHandler sets what runs when the app is opened again while it runs.
+// Darwin-only and not on ports.SystrayPort: reopen is a macOS app-lifecycle
+// event, wired by the daemon host before Run like the run loop itself.
+func SetReopenHandler(fn func()) { darwin.SetReopenHandler(fn) }
+
 // Quit stops the tray event loop.
 func Quit() { darwin.Quit() }
 
