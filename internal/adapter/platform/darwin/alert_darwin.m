@@ -54,9 +54,9 @@ static int showAlertOnMainThread(const char *errorMessage, const char *configPat
 	NSAlert *alert = [[NSAlert alloc] init];
 	alert.messageText = @"⚠️ Configuration Validation Failed";
 	alert.informativeText =
-	    [NSString stringWithFormat:@"Neru encountered an error while loading your configuration file:\n\n%@\n\nConfig "
+	    [NSString stringWithFormat:@"%@ encountered an error while loading your configuration file:\n\n%@\n\nConfig "
 	                               @"file: %@",
-	                               error, path];
+	                               NeruAppName(), error, path];
 	alert.alertStyle = NSAlertStyleWarning;
 	alert.icon = [NSImage imageNamed:NSImageNameCaution];
 
@@ -117,7 +117,7 @@ static int showOnboardingAlertOnMainThread(const char *configPath) {
 
 	// Configure alert content
 	NSAlert *alert = [[NSAlert alloc] init];
-	alert.messageText = @"👋 Welcome to Neru!";
+	alert.messageText = [NSString stringWithFormat:@"👋 Welcome to %@!", NeruAppName()];
 	alert.informativeText =
 	    [NSString stringWithFormat:@"No configuration file found.\n\nA default config will be created at:\n%@\n\nYou "
 	                               @"can run 'neru config init' later to recreate it.",
@@ -171,17 +171,21 @@ int NeruShowAccessibilityPermissionStartupAlert(void) {
 
 /// Internal function to show the accessibility permission alert on main thread.
 static int showAccessibilityPermissionStartupAlertOnMainThread(void) {
+	NSString *appName = NeruAppName();
+
 	while (NeruCheckAccessibilityPermissions() != 1) {
 		NSAlert *alert = [[NSAlert alloc] init];
 		alert.messageText = @"Accessibility Permission Needed";
-		alert.informativeText =
-		    @"Neru needs Accessibility permission to work. Click Request Permission to open the macOS permission "
-		    @"flow, grant access in System Settings, then return here and click Granted, Start Neru.";
+		alert.informativeText = [NSString
+		    stringWithFormat:@"%@ needs Accessibility permission to work. Click Request Permission to open the macOS "
+		                     @"permission flow, then grant access in System Settings. %@ starts on its own once access "
+		                     @"is granted.",
+		                     appName, appName];
 		alert.alertStyle = NSAlertStyleWarning;
 		alert.icon = [NSImage imageNamed:NSImageNameCaution];
 
 		[alert addButtonWithTitle:@"Request Permission"];
-		[alert addButtonWithTitle:@"Granted, Start Neru"];
+		[alert addButtonWithTitle:[NSString stringWithFormat:@"Granted, Start %@", appName]];
 		[alert addButtonWithTitle:@"Quit"];
 
 		[[alert window] setLevel:NSFloatingWindowLevel];
@@ -190,7 +194,20 @@ static int showAccessibilityPermissionStartupAlertOnMainThread(void) {
 		[[alert window] makeKeyAndOrderFront:nil];
 		[NSApp activateIgnoringOtherApps:YES];
 
+		// Ends the alert once access is granted, so startup goes on without a
+		// click. abortModal, not stopModal: a timer is not an event callout,
+		// and stopModal would wait for the next event to arrive.
+		NSTimer *poll = [NSTimer timerWithTimeInterval:1.0
+		                                       repeats:YES
+		                                         block:^(__unused NSTimer *timer) {
+			                                         if (NeruCheckAccessibilityPermissions() == 1) {
+				                                         [NSApp abortModal];
+			                                         }
+		                                         }];
+		[[NSRunLoop currentRunLoop] addTimer:poll forMode:NSModalPanelRunLoopMode];
+
 		NSModalResponse response = [alert runModal];
+		[poll invalidate];
 		[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 
 		if (response == NSAlertFirstButtonReturn) {
@@ -304,7 +321,7 @@ static void ensureNotificationSetup(void (^completion)(BOOL authorized)) {
 /// This function returns before the notification is actually delivered.
 void NeruShowNotification(const char *title, const char *message) {
 	@autoreleasepool {
-		NSString *nsTitle = title ? [NSString stringWithUTF8String:title] : @"Neru";
+		NSString *nsTitle = title ? [NSString stringWithUTF8String:title] : NeruAppName();
 		NSString *nsMessage = message ? [NSString stringWithUTF8String:message] : @"";
 
 		NSString *bundleId = [[NSBundle mainBundle] bundleIdentifier];
@@ -314,7 +331,7 @@ void NeruShowNotification(const char *title, const char *message) {
 		} else {
 			// Without a bundle there is no notification center, so the
 			// notification goes to the terminal Neru was launched from.
-			NSString *line = [NSString stringWithFormat:@"Neru: [%@] %@\n", nsTitle, nsMessage];
+			NSString *line = [NSString stringWithFormat:@"%@: [%@] %@\n", NeruAppName(), nsTitle, nsMessage];
 			[[NSFileHandle fileHandleWithStandardError] writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
 		}
 	}

@@ -5,6 +5,7 @@
 //  Copyright © 2026 Neru. All rights reserved.
 //
 
+#import "alert.h"
 #import "nativelog.h"
 #import "screencapture.h"
 
@@ -65,14 +66,18 @@ int NeruRequestScreenCapturePermissions(void) {
 #pragma mark - Alert Functions
 
 static int showScreenCapturePermissionAlertOnMainThread(void) {
+	NSString *appName = NeruAppName();
+
 	while (NeruCheckScreenCapturePermissions() != 1) {
 		NSAlert *alert = [[NSAlert alloc] init];
 		alert.messageText = @"Screen Recording Permission Needed";
-		alert.informativeText =
-		    @"Neru needs Screen Recording permission to capture the screen for text recognition.\n\n"
-		     "Click 'Request Permission' to open System Settings, enable Neru, then return here and click 'I've "
-		     "Granted It'.\n\n"
-		     "Note: macOS requires restarting Neru after granting screen recording permission for it to take effect.";
+		alert.informativeText = [NSString
+		    stringWithFormat:@"%@ needs Screen Recording permission to capture the screen for text recognition.\n\n"
+		                      "Click 'Request Permission' to open System Settings, enable %@, then return here and "
+		                      "click 'I've Granted It'.\n\n"
+		                      "Note: macOS requires restarting %@ after granting screen recording permission for it "
+		                      "to take effect.",
+		                     appName, appName, appName];
 		alert.alertStyle = NSAlertStyleWarning;
 		alert.icon = [NSImage imageNamed:NSImageNameCaution];
 
@@ -97,12 +102,13 @@ static int showScreenCapturePermissionAlertOnMainThread(void) {
 			} else {
 				// Show a confirmation alert explaining the restart requirement
 				NSAlert *restartAlert = [[NSAlert alloc] init];
-				restartAlert.messageText = @"Neru Restart Required";
+				restartAlert.messageText = [NSString stringWithFormat:@"%@ Restart Required", appName];
 				restartAlert.informativeText =
-				    @"macOS requires restarting Neru for Screen Recording permissions to take effect.\n\n"
-				     "Neru will now quit. Please relaunch the application.";
+				    [NSString stringWithFormat:@"macOS requires restarting %@ for Screen Recording permissions to take "
+				                                "effect.\n\n%@ will now quit. Please relaunch the application.",
+				                               appName, appName];
 				restartAlert.alertStyle = NSAlertStyleInformational;
-				[restartAlert addButtonWithTitle:@"Quit Neru"];
+				[restartAlert addButtonWithTitle:[NSString stringWithFormat:@"Quit %@", appName]];
 
 				[[restartAlert window] setLevel:NSFloatingWindowLevel];
 				[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];

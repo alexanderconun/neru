@@ -28,6 +28,8 @@ int NeruIsSecureInputEnabled(void) {
 /// Reuses the NeruShowNotification function from alert.m which handles
 /// UNUserNotificationCenter for app bundles and logs to console otherwise.
 void NeruShowSecureInputNotification(void) {
-	NeruShowNotification(
-	    "Neru: Secure Input Detected", "Mode activation blocked. A password field or secure input is active.");
+	@autoreleasepool {
+		NSString *title = [NSString stringWithFormat:@"%@: Secure Input Detected", NeruAppName()];
+		NeruShowNotification(title.UTF8String, "Mode activation blocked. A password field or secure input is active.");
+	}
 }
