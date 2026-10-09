@@ -112,7 +112,9 @@ struct RecursiveGridSize: View {
 
     private func send() {
         let current = saved
-        guard problem == nil, (cols, rows, keys.lowercased()) != (current.cols, current.rows, current.keys) else { return }
+        // The dump keeps the file's case; the daemon lowercases keys when it uses them.
+        guard problem == nil,
+              (cols, rows, keys.lowercased()) != (current.cols, current.rows, current.keys.lowercased()) else { return }
         let lower = keys.lowercased()
         neru.setMany([("recursive_grid.grid_cols", String(cols)), ("recursive_grid.grid_rows", String(rows)),
                       ("recursive_grid.keys", lower)],

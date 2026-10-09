@@ -196,16 +196,17 @@ final class Neru: ObservableObject {
     }
 
     /// Sets several fields; more than one is applied with a single reload.
+    /// "--" keeps a value starting with "-" ("-1", keys "-=[]") from being read as a flag.
     func setMany(_ pairs: [(String, String)], local: [(String, Any)]? = nil) {
         for (key, value) in local ?? pairs.map({ ($0.0, $0.1 as Any) }) { setLocal(key, value) }
         error = nil
         background {
             if pairs.count == 1 {
-                let result = self.run(["config", "set", pairs[0].0, pairs[0].1])
+                let result = self.run(["config", "set", "--", pairs[0].0, pairs[0].1])
                 return result.ok ? nil : result.out
             }
             for (key, value) in pairs {
-                let result = self.run(["config", "set", "--no-reload", key, value])
+                let result = self.run(["config", "set", "--no-reload", "--", key, value])
                 if !result.ok { return result.out }
             }
             let result = self.run(["config", "reload"])

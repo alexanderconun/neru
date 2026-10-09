@@ -95,10 +95,21 @@ extension Neru {
     }
 
     /// The key of a `key = value` line, unquoted, or nil for anything else.
+    /// A quoted key is read to its closing quote: it may hold `=`, quotes or `\`.
     static func tomlKey(_ line: String) -> String? {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.hasPrefix("#"), !trimmed.hasPrefix("["), let eq = trimmed.firstIndex(of: "=") else { return nil }
-        return trimmed[..<eq].trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+        var rest = Substring(line.trimmingCharacters(in: .whitespaces))
+        guard let quote = rest.first, quote != "#", quote != "[" else { return nil }
+        guard quote == "\"" || quote == "'" else {
+            guard let eq = rest.firstIndex(of: "=") else { return nil }
+            return rest[..<eq].trimmingCharacters(in: .whitespaces)
+        }
+        rest.removeFirst()
+        var key = ""
+        while let char = rest.popFirst(), char != quote {
+            // ponytail: only \" and \\ are unescaped (all tomlString puts in a key); \u… is kept as typed.
+            key.append(quote == "\"" && char == "\\" ? rest.popFirst() ?? char : char)
+        }
+        return rest.trimmingCharacters(in: .whitespaces).hasPrefix("=") ? key : nil
     }
 
     /// A `"key" = "value"` line with both sides escaped.

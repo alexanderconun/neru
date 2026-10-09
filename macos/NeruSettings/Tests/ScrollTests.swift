@@ -8,7 +8,7 @@ func runScrollTests() {
     for ok in ["hjkl", "HJKL", "lkjh", "hnei", "zxcv", ";,./"] {
         assert(Neru.scrollKeysProblem(ok, bindings: defaults) == nil, ok)
     }
-    for bad in ["hjk", "hjklm", "hjkh", "hjkH", "hjk ", "hjké", "hjkg", "hjku", "dhjk"] {
+    for bad in ["hjk", "hjklm", "hjkh", "hjkH", "hjk ", "hjké", "hjkg", "hjku", "dhjk", "hjk+"] {
         assert(Neru.scrollKeysProblem(bad, bindings: defaults) != nil, bad)
     }
     // "g" is only refused while "gg" is bound; "Up" is no sequence, so a free "u" passes.
@@ -60,12 +60,34 @@ func runScrollTests() {
     let fresh = Neru.rewriteScrollKeys("[general]\n", to: "hnei", bindings: defaults)
     assert(Neru.tableKeys(fresh, header: "scroll.hotkeys") == ["h", "n", "e", "i", "j", "k", "l"])
 
+    // Keys TOML has to quote or escape are read back and removed like any other.
+    for odd in ["=", "'", "\"", "\\"] {
+        assert(Neru.tomlKey(Neru.tomlLine(odd, "x")) == odd, odd)
+        let moved = Neru.rewriteScrollKeys(table, to: odd + "jkl", bindings: defaults)
+        var bindings = defaults
+        bindings["h"] = nil
+        bindings[odd] = ["action scroll_left"]
+        let undone = Neru.rewriteScrollKeys(moved, to: "hjkl", bindings: bindings)
+        assert(!Neru.tableKeys(undone, header: "scroll.hotkeys").contains(odd) && !undone.contains("__disabled__"), odd)
+    }
+
+    // A default key bound by hand under another case ("H") is the user's: kept, never disabled.
+    var shifted = defaults
+    shifted["h"] = nil
+    shifted["H"] = ["action page_up"]
+    let byHand = Neru.rewriteScrollKeys(table.replacingOccurrences(of: "\"h\" = \"action scroll_left\"", with: "\"H\" = \"action page_up\""),
+                                        to: "ajkl", bindings: shifted)
+    assert(byHand.contains("\"H\" = \"action page_up\"") && !byHand.contains("__disabled__"))
+
     // Arrow keys: scroll replaces the pointer moves; move pointer drops the lines again.
     let arrows = Neru.rewriteArrows(table, scroll: true)
     assert(arrows.contains("\"Up\" = \"action scroll_up\"") && !arrows.contains("move_mouse_relative"))
     var arrowBindings = defaults
     for (key, dir) in zip(Neru.arrowKeys, Neru.scrollDirections) { arrowBindings[key] = ["action scroll_\(dir)"] }
     assert(Neru.arrowsScroll(in: arrowBindings) && !Neru.arrowsScroll(in: defaults))
+    var lowerArrows = defaults.filter { !Neru.arrowKeys.contains($0.key) }
+    for (key, dir) in zip(["left", "down", "up", "right"], Neru.scrollDirections) { lowerArrows[key] = ["action scroll_\(dir)"] }
+    assert(Neru.arrowsScroll(in: lowerArrows))
     let pointer = Neru.rewriteArrows(arrows, scroll: false)
     assert(!pointer.contains("\"Up\"") && pointer.contains("\"Escape\" = \"idle\""))
 

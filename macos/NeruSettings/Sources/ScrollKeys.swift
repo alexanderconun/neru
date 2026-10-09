@@ -60,7 +60,7 @@ extension Neru {
     }
 
     func setArrowsScroll(_ scroll: Bool) {
-        var local = hotkeys("scroll")
+        var local = hotkeys("scroll").filter { key, _ in !Self.arrowKeys.contains { $0.lowercased() == key.lowercased() } }
         for (key, dir) in zip(Self.arrowKeys, Self.scrollDirections) {
             local[key] = [scroll ? "action scroll_\(dir)" : Self.defaultScrollHotkeys[key]!]
         }
@@ -77,14 +77,19 @@ extension Neru {
         }
     }
 
+    /// Named keys match case-insensitively, so the file may spell an arrow "up".
     static func arrowsScroll(in bindings: [String: [String]]) -> Bool {
-        zip(arrowKeys, scrollDirections).allSatisfy { bindings[$0] == ["action scroll_\($1)"] }
+        zip(arrowKeys, scrollDirections).allSatisfy { arrow, dir in
+            bindings.contains { $0.key.lowercased() == arrow.lowercased() && $0.value == ["action scroll_\(dir)"] }
+        }
     }
 
     /// Why `keys` can't become the scroll keys, or nil. `bindings` is the
     /// daemon's scroll table; the four directions themselves may be reshuffled.
     static func scrollKeysProblem(_ keys: String, bindings: [String: [String]]) -> String? {
         guard keys.count == 4 else { return "Type four keys: left, down, up, right." }
+        // A lone "+" is read as a modifier combo with no modifier, which the loader refuses.
+        if keys.contains("+") { return "+ joins modifier keys, so it can't be a scroll key." }
         let directions = Set(scrollDirections.map { ["action scroll_\($0)"] })
         return keysProblem(keys, bound: bindings.filter { !directions.contains($0.value) })
     }
@@ -120,9 +125,11 @@ extension Neru {
     /// four direction lines: an empty one would clear Escape too.
     static func rewriteScrollKeys(_ toml: String, to keys: String, bindings: [String: [String]]) -> String {
         let new = keys.lowercased().map(String.init)
-        let old = Array(directionKeys(bindings).joined())
-        // A default key bound by hand to something else is left alone.
-        let unused = defaultScrollKeys.filter { !new.contains($0) && (old.contains($0) || bindings[$0] == nil) }
+        let old = directionKeys(bindings).joined().map { $0.lowercased() }
+        // A default key bound by hand to something else is left alone; the dump
+        // keeps the file's spelling, so "H" = … binds h.
+        let bound = Set(bindings.keys.map { $0.lowercased() })
+        let unused = defaultScrollKeys.filter { !new.contains($0) && (old.contains($0) || !bound.contains($0)) }
         let lines = zip(new, scrollDirections).map { tomlLine($0, "action scroll_\($1)") }
             + unused.map { tomlLine($0, "__disabled__") }
         return editTable(toml, header: "scroll.hotkeys", removing: spellings(old + new + unused), adding: lines)
