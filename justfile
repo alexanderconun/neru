@@ -123,7 +123,7 @@ build-darwin:
     @echo "✓ Build complete: bin/neru-darwin"
 
 # Build the macOS settings window app next to bin/neru
-[doc('Build bin/NeruSettings.app, the SwiftUI settings window opened from the menu bar.')]
+[doc('Build bin/NeruSettings.app, the settings window opened from the menu bar.')]
 build-settings:
     @echo "Building NeruSettings.app..."
     rm -rf bin/NeruSettings.app

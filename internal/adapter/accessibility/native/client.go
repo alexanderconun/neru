@@ -141,7 +141,8 @@ func (c *Client) ApplicationByBundleID(_ context.Context, bundleID string) (ax.A
 	return &InfraApp{element: app}, nil
 }
 
-// MenuBarClickableElements returns clickable elements in the menu bar.
+// MenuBarClickableElements returns clickable elements in the menu bar: the
+// focused app's menus and every running app's menu bar icons.
 // If maxDepth is > 0, it overrides the configured tree depth.
 func (c *Client) MenuBarClickableElements(
 	ctx context.Context,
@@ -159,6 +160,15 @@ func (c *Client) MenuBarClickableElements(
 			derrors.CodeAccessibilityFailed,
 			"failed to get menu bar elements",
 		)
+	}
+
+	// The icons on the right of the menu bar belong to whichever app put them
+	// there, not to the focused app whose menus fill the left side.
+	extras, extrasErr := MenuExtrasClickableElements(ctx, c.logger, c.configProvider)
+	if extrasErr == nil {
+		nodes = append(nodes, extras...)
+	} else if !derrors.IsNotSupported(extrasErr) {
+		c.logger.Warn("Failed to get menu bar icons", zap.Error(extrasErr))
 	}
 
 	nodesResult := make([]ax.Node, len(nodes))

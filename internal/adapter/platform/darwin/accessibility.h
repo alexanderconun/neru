@@ -88,6 +88,8 @@ void *NeruGetApplicationByBundleId(const char *bundle_id);
 /// @param app Application reference
 /// @return Menu bar reference
 void *NeruGetMenuBar(void *app);
+void *NeruGetExtrasMenuBar(void *app);
+int NeruGetRunningApplicationPIDs(int *pids, int max);
 
 #pragma mark - Element Functions
 

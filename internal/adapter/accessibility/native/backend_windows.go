@@ -59,3 +59,7 @@ var (
 
 // MissionControlClickableElements is the platform's Mission Control collector.
 var MissionControlClickableElements = windows.MissionControlClickableElements
+
+// MenuExtrasClickableElements is the platform's collector for every running
+// app's menu bar icons.
+var MenuExtrasClickableElements = windows.MenuExtrasClickableElements

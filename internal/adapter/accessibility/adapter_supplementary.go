@@ -2,6 +2,7 @@ package accessibility
 
 import (
 	"context"
+	"image"
 	"sync"
 
 	"go.uber.org/zap"
@@ -33,6 +34,8 @@ func (a *Adapter) addMenubarElements(
 	elements []*element.Element,
 	filter ports.ElementFilter,
 ) []*element.Element {
+	start := len(elements)
+
 	// Create local allowed roles including AXMenuBarItem for additional targets
 	originalRoles := a.client.ClickableRoles()
 	menubarRoles := make([]string, len(originalRoles)+2) //nolint:mnd
@@ -130,7 +133,27 @@ func (a *Adapter) addMenubarElements(
 		waitGroup.Wait()
 	}
 
-	return elements
+	return append(elements[:start], dedupeByBounds(elements[start:])...)
+}
+
+// dedupeByBounds drops elements with the same frame as an earlier one. Every
+// app's menu bar icons are collected, so an icon from an app that is also an
+// additional menubar target would otherwise get two hints.
+func dedupeByBounds(elements []*element.Element) []*element.Element {
+	seen := make(map[image.Rectangle]struct{}, len(elements))
+	kept := elements[:0]
+
+	for _, elem := range elements {
+		bounds := elem.Bounds()
+		if _, dup := seen[bounds]; dup {
+			continue
+		}
+
+		seen[bounds] = struct{}{}
+		kept = append(kept, elem)
+	}
+
+	return kept
 }
 
 // addDockElements adds dock clickable elements.

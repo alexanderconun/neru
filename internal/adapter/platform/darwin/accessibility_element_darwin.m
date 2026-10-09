@@ -66,6 +66,48 @@ void *NeruGetMenuBar(void *app) {
 	return (void *)menubar;
 }
 
+/// How long one app may take to answer for its menu bar icons. A hung app
+/// otherwise holds hint collection for the 6 s system default.
+static const float kNeruExtrasQueryTimeout = 0.1f;
+
+/// Get an application's menu bar icons (status items), the AXExtrasMenuBar
+/// every app that puts icons in the right side of the menu bar exposes
+/// @param app Application reference
+/// @return Extras menu bar reference, or NULL when the app has none
+void *NeruGetExtrasMenuBar(void *app) {
+	if (!app)
+		return NULL;
+
+	AXUIElementRef axApp = (AXUIElementRef)app;
+	AXUIElementSetMessagingTimeout(axApp, kNeruExtrasQueryTimeout);
+
+	AXUIElementRef extras = NULL;
+	AXError error = AXUIElementCopyAttributeValue(axApp, CFSTR("AXExtrasMenuBar"), (CFTypeRef *)&extras);
+	if (error != kAXErrorSuccess || !extras) {
+		return NULL;
+	}
+
+	AXUIElementSetMessagingTimeout(extras, kNeruExtrasQueryTimeout);
+	return (void *)extras;
+}
+
+/// Get the PIDs of all running applications
+/// @param pids Buffer the PIDs are written to
+/// @param max Capacity of pids
+/// @return Number of PIDs written
+int NeruGetRunningApplicationPIDs(int *pids, int max) {
+	@autoreleasepool {
+		int count = 0;
+		for (NSRunningApplication *app in [[NSWorkspace sharedWorkspace] runningApplications]) {
+			if (count >= max)
+				break;
+			if (app.processIdentifier > 0)
+				pids[count++] = app.processIdentifier;
+		}
+		return count;
+	}
+}
+
 /// Get application by PID
 /// @param pid Process identifier
 /// @return Application reference
