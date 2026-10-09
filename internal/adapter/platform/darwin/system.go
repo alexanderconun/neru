@@ -222,8 +222,16 @@ func (s *SystemAdapter) RequestScreenCapturePermission(
 	}
 }
 
+// PlaySound plays a click or warning sound through NSSound without blocking.
+func (s *SystemAdapter) PlaySound(kind ports.Sound, volume float64) {
+	playSound(int(kind), volume)
+}
+
 // Ensure SystemAdapter implements ports.SystemPort.
 var _ ports.SystemPort = (*SystemAdapter)(nil)
+
+// SystemAdapter plays the click and warning feedback sounds.
+var _ ports.SoundPlayer = (*SystemAdapter)(nil)
 
 // Ensure SystemAdapter opts into relative cursor movement (animated relative
 // moves when smooth cursor is enabled).

@@ -206,6 +206,7 @@ func (a *App) updateServiceConfigs(cfg *config.Config) {
 
 	if a.actionService != nil {
 		a.actionService.UpdateConfig(cfg.MouseAction)
+		a.actionService.UpdateSoundConfig(cfg.Sound)
 	}
 }
 

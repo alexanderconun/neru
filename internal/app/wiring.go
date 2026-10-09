@@ -203,6 +203,7 @@ func initializeServices(
 		logger,
 	)
 	actionService.UpdateConfig(cfg.MouseAction)
+	actionService.UpdateSoundConfig(cfg.Sound)
 
 	// Scroll Service - manages scrolling operations
 	scrollService := services.NewScrollService(

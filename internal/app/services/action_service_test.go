@@ -3,6 +3,7 @@ package services_test
 import (
 	"context"
 	"image"
+	"slices"
 	"strings"
 	"testing"
 
@@ -594,5 +595,69 @@ func TestActionService_ReleaseHeldButtons_SettlesCursorBeforeRelease(t *testing.
 
 	if settledAtReleaseTime != 1 {
 		t.Fatalf("settle calls at release time = %d, want 1", settledAtReleaseTime)
+	}
+}
+
+// soundSystemPort records the sounds an ActionService asks the platform for.
+type soundSystemPort struct {
+	portmocks.MockSystemPort
+
+	played  []ports.Sound
+	volumes []float64
+}
+
+func (s *soundSystemPort) PlaySound(kind ports.Sound, volume float64) {
+	s.played = append(s.played, kind)
+	s.volumes = append(s.volumes, volume)
+}
+
+func TestPerformActionAtPoint_PlaysFeedbackSounds(t *testing.T) {
+	postFailed := derrors.New(derrors.CodeActionFailed, "post failed")
+
+	tests := []struct {
+		name      string
+		enabled   bool
+		action    string
+		actionErr error
+		want      []ports.Sound
+	}{
+		{"click plays the click sound", true, leftClickAction, nil, []ports.Sound{ports.SoundClick}},
+		{"disabled plays nothing", false, leftClickAction, nil, nil},
+		{"a non-click plays nothing", true, "left_mouse_down", nil, nil},
+		{"a failed click plays the warning", true, leftClickAction, postFailed, []ports.Sound{ports.SoundWarning}},
+		// Any failed action warns, not only a click: a hint whose move_mouse
+		// or button press failed is just as silent to the user otherwise.
+		{"a failed non-click plays the warning", true, "left_mouse_down", postFailed, []ports.Sound{ports.SoundWarning}},
+		{"a failure while disabled plays nothing", false, leftClickAction, postFailed, nil},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			acc := &portmocks.MockAccessibilityPort{
+				PerformActionAtPointFunc: func(
+					context.Context,
+					action.Type,
+					image.Point,
+					action.Modifiers,
+				) error {
+					return testCase.actionErr
+				},
+			}
+			system := &soundSystemPort{}
+			service := newTestActionService(acc, system)
+			service.UpdateSoundConfig(config.SoundConfig{Enabled: testCase.enabled, Volume: 40})
+
+			_ = service.PerformActionAtPoint(context.Background(), testCase.action, image.Point{}, 0)
+
+			if !slices.Equal(system.played, testCase.want) {
+				t.Fatalf("played %v, want %v", system.played, testCase.want)
+			}
+
+			for _, volume := range system.volumes {
+				if volume != 0.4 {
+					t.Fatalf("volume = %v, want 0.4 for 40%%", volume)
+				}
+			}
+		})
 	}
 }

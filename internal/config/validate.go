@@ -114,6 +114,11 @@ func (c *Config) ValidateWithWarnings(warnings *Warnings, written WrittenConfig)
 		return err
 	}
 
+	err = c.ValidateSound()
+	if err != nil {
+		return err
+	}
+
 	// Validate sticky modifiers settings
 	err = c.ValidateStickyModifiers()
 	if err != nil {

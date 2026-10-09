@@ -133,6 +133,7 @@ type Config struct {
 	MonitorSelect   MonitorSelectConfig            `json:"monitorSelect"   toml:"monitor_select"`
 	VirtualPointer  VirtualPointerConfig           `json:"virtualPointer"  toml:"virtual_pointer"`
 	MouseAction     MouseActionConfig              `json:"mouseAction"     toml:"mouse_action_indicator"`
+	Sound           SoundConfig                    `json:"sound"           toml:"sound"`
 	Scroll          ScrollConfig                   `json:"scroll"          toml:"scroll"`
 	ModeIndicator   ModeIndicatorConfig            `json:"modeIndicator"   toml:"mode_indicator"`
 	StickyModifiers StickyModifiersConfig          `json:"stickyModifiers" toml:"sticky_modifiers"`
@@ -729,6 +730,12 @@ type HeldRepeatConfig struct {
 	AccelRampMs        int      `json:"accelRampMs"        toml:"accel_ramp_ms"`        // Hold time to reach accel_max_multiplier (ms)
 	AccelMaxMultiplier float64  `json:"accelMaxMultiplier" toml:"accel_max_multiplier"` // Speed multiplier at full ramp
 	AccelTargets       []string `json:"accelTargets"       toml:"accel_targets"`        // Action names eligible for acceleration
+}
+
+// SoundConfig defines the click and warning feedback sounds.
+type SoundConfig struct {
+	Enabled bool `json:"enabled" toml:"enabled"` // Click after a click, warning after a failure
+	Volume  int  `json:"volume"  toml:"volume"`  // Percent, 0..100
 }
 
 // SystrayConfig defines system tray settings.
