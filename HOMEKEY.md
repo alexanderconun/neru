@@ -14,7 +14,7 @@ scripts/build-app.sh   # or: just app
 ```
 
 It needs Go and the Xcode command line tools. In one go it builds the
-version-stamped `neru` binary, the settings app (`NeruSettings.app`) and its
+version-stamped `neru` binary, the settings app (`Homekey Settings.app`) and its
 self-checks, then runs `scripts/dist.sh` to put together and sign
 `build/dist.noindex/Homekey.app`. It installs nothing. It ends by printing the
 bundle path and the install steps below. The `.noindex` folder keeps Spotlight
@@ -122,7 +122,7 @@ stay the same:
 | --- | --- |
 | Bundle id `com.y3owk1n.neru` | Accessibility, Screen Recording and notification grants are keyed on it. The default menu bar hint target and users' copied configs name it. |
 | launchd label `com.y3owk1n.neru` | Renaming it orphans the registered agent, and you end up running two KeepAlive daemons. |
-| Executable `neru`, helper `Contents/Helpers/NeruSettings.app` | The settings app, the menu bar's "Settings…" item, oku and nix all look these up by name. |
+| Executable `neru` | The settings app, oku and nix look it up by name. |
 | `~/.config/neru`, the `neru.sock` socket, `~/Library/Logs/neru` | Existing configs and logs keep working, and a CLI and a daemon from either build can still talk. |
 | `Neru version <tag>` output | Version checks parse that prefix. |
 | Go module path `github.com/y3owk1n/neru` | Every import and the version ldflags use it. Renaming it would conflict with every upstream merge. |

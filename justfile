@@ -123,17 +123,9 @@ build-darwin:
     @echo "✓ Build complete: bin/neru-darwin"
 
 # Build the macOS settings window app next to bin/neru
-[doc('Build bin/NeruSettings.app, the settings window opened from the menu bar.')]
+[doc('Build bin/Homekey Settings.app, the settings window from the menu bar.')]
 build-settings:
-    @echo "Building NeruSettings.app..."
-    rm -rf bin/NeruSettings.app
-    mkdir -p bin/NeruSettings.app/Contents/MacOS bin/NeruSettings.app/Contents/Resources
-    swiftc -O -swift-version 5 -parse-as-library -target "$(uname -m)-apple-macos14.0" \
-        -o bin/NeruSettings.app/Contents/MacOS/NeruSettings macos/NeruSettings/Sources/*.swift
-    cp macos/NeruSettings/Info.plist bin/NeruSettings.app/Contents/
-    cp resources/icon.icns bin/NeruSettings.app/Contents/Resources/
-    codesign --force --sign "${NERU_SIGN_IDENTITY:--}" bin/NeruSettings.app
-    @echo "✓ Build complete: bin/NeruSettings.app"
+    bash scripts/build-settings.sh
 
 # Build build/dist.noindex/Homekey.app (binary, settings app, self-checks, signing) and
 # print how to install it. Installs nothing; see HOMEKEY.md.
@@ -142,7 +134,7 @@ app:
     bash scripts/build-app.sh
 
 # Self-check the settings app's pure logic (config text edits, launchers, …)
-[doc('Run the NeruSettings self-checks.')]
+[doc('Run the settings window self-checks.')]
 check-settings:
     mkdir -p bin
     swiftc -swift-version 5 -o bin/check-settings $(ls macos/NeruSettings/Sources/*.swift | grep -v '/App.swift$') macos/NeruSettings/Tests/*.swift

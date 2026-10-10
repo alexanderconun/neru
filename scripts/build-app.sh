@@ -26,15 +26,7 @@ CGO_ENABLED=1 go build \
     -ldflags="-s -w -X $pkg.Version=$version -X $pkg.GitCommit=$commit -X $pkg.BuildDate=$date" \
     -o bin/neru ./cmd/neru
 
-echo "Building NeruSettings.app..."
-rm -rf bin/NeruSettings.app
-mkdir -p bin/NeruSettings.app/Contents/MacOS bin/NeruSettings.app/Contents/Resources
-swiftc -O -swift-version 5 -parse-as-library -target "$(uname -m)-apple-macos14.0" \
-    -o bin/NeruSettings.app/Contents/MacOS/NeruSettings macos/NeruSettings/Sources/*.swift
-cp macos/NeruSettings/Info.plist bin/NeruSettings.app/Contents/
-cp resources/icon.icns bin/NeruSettings.app/Contents/Resources/
-# dist.sh re-signs it with the bundle's identity; this only makes it runnable.
-codesign --force --sign "${NERU_SIGN_IDENTITY:--}" bin/NeruSettings.app
+bash scripts/build-settings.sh
 
 echo "Checking the settings logic..."
 # shellcheck disable=SC2046 # one path per source file, no spaces in them

@@ -78,10 +78,11 @@ if [ "$host" = macos ]; then
     sign="${sign:--}"
     # The settings window ships inside the app (`just build-settings`). Nested
     # code is signed first, inside-out; --deep would stamp Neru's entitlements on it.
-    if [ -d bin/NeruSettings.app ]; then
+    helper="bin/Homekey Settings.app"
+    if [ -d "$helper" ]; then
         mkdir -p "$app/Contents/Helpers"
-        cp -R bin/NeruSettings.app "$app/Contents/Helpers/"
-        codesign --force --sign "$sign" --options runtime "$app/Contents/Helpers/NeruSettings.app"
+        cp -R "$helper" "$app/Contents/Helpers/"
+        codesign --force --sign "$sign" --options runtime "$app/Contents/Helpers/Homekey Settings.app"
     fi
     codesign --force --sign "$sign" --entitlements resources/Neru.entitlements --options runtime "$app"
 fi

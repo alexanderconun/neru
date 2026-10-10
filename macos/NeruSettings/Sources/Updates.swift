@@ -45,7 +45,7 @@ final class UpdateChecker: ObservableObject {
     }
 
     /// NeruBuildID of the app this window ships in
-    /// (<App>.app/Contents/Helpers/NeruSettings.app), else the tag in the
+    /// (<App>.app/Contents/Helpers/Homekey Settings.app), else the tag in the
     /// first line of `neru --version` ("Neru version <tag>"), else "".
     static func installedVersion(cliVersion: String) -> String {
         let app = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

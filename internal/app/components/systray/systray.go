@@ -442,7 +442,7 @@ func (c *Component) handleOpenConfig() {
 }
 
 // settingsAppName is the macOS settings window app, built by `just build-settings`.
-const settingsAppName = "NeruSettings.app"
+const settingsAppName = "Homekey Settings.app"
 
 // handleOpenSettings opens the settings app. Without one it falls back to the config file.
 func (c *Component) handleOpenSettings() {
