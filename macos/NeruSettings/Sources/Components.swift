@@ -3,9 +3,12 @@ import SwiftUI
 
 // MARK: building blocks
 
+/// A row title with an optional "?" that explains it. The explanation opens
+/// on click: a hover tooltip alone rarely shows inside a Form row.
 struct HelpLabel: View {
     let title: String
     let help: String?
+    @State private var showingHelp = false
 
     init(_ title: String, help: String? = nil) {
         self.title = title
@@ -16,7 +19,19 @@ struct HelpLabel: View {
         HStack(spacing: 6) {
             Text(title)
             if let help {
-                Image(systemName: "questionmark.circle").foregroundStyle(.secondary).help(help)
+                Button { showingHelp.toggle() } label: {
+                    Image(systemName: "questionmark.circle").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .help(help)
+                .accessibilityLabel("About \(title)")
+                .popover(isPresented: $showingHelp, arrowEdge: .bottom) {
+                    Text(help)
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: 280, alignment: .leading)
+                        .padding(14)
+                }
             }
         }
     }
