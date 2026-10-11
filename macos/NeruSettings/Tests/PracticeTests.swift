@@ -101,13 +101,13 @@ func runPracticeTests() {
     assert(Neru.tutorialText(.showLabels, in: user)
         == "Press ⌘⇧Space to show labels. Letters appear on every button you can click. Press Escape to hide them.")
     assert(Neru.tutorialText(.click, in: user) == "Press ⌘⇧Space, then type the letters on Click me.")
-    assert(Neru.tutorialText(.rightClick, in: user) == "Press ⌘⇧Space and type the label on Right-click me: it gets a left click, and the "
-        + "pointer is now on it. Press ⌘⇧Space again and then Shift+R: it right-clicks where the pointer is. Then press Escape to hide the labels.")
+    assert(Neru.tutorialText(.rightClick, in: user) == "Press ⌘⇧Space and type the label on Right-click me — the pointer is now on it. "
+        + "Press ⌘⇧Space again and then Shift+R: it right-clicks where the pointer is. Then press Escape to hide the labels.")
     assert(Neru.tutorialText(.search, in: user) == "Press ⌘⇧Space, then /, type rocket and press Return.")
     assert(Neru.tutorialText(.scroll, in: user) == "Put the pointer over the list and press ⌘⇧S. J and K scroll down and up, "
         + "D and U by half a page, gg goes to the top and Shift+G to the bottom. Escape stops.")
-    assert(Neru.tutorialText(.grid, in: user) == "Press ⌘⇧G, type the letters of the cell with the dot, then the key of the small square "
-        + "on it. Press Shift+L to click, then Escape to close the grid.")
+    assert(Neru.tutorialText(.grid, in: user) == "Press ⌘⇧G, type the letters of the cell with the dot, then the letter of the small square "
+        + "on the dot. Press Shift+L to click, then Escape to close the grid.")
     assert(Neru.tutorialCommand(.click, in: user) == ["hints", "--action", "left_click"])
     assert(Neru.tutorialCommand(.rightClick, in: user) == ["hints", "--action", "left_click"])
     assert(Neru.tutorialCommand(.scroll, in: user) == ["scroll"])
@@ -128,7 +128,7 @@ func runPracticeTests() {
     // Chain clicks: the labels come back after the click.
     let chained = ["hotkeys": ["bindings": ["Primary+Shift+Space": ["hints --action left_click --repeat"]]]]
     assert(Neru.tutorialText(.click, in: chained).hasSuffix("The labels come back after the click; press Escape to hide them."))
-    assert(Neru.tutorialText(.rightClick, in: chained).contains("it gets a left click, the pointer stays on it and the labels come back. Press Shift+R"))
+    assert(Neru.tutorialText(.rightClick, in: chained).contains("it is clicked, the pointer stays on it and the labels come back. Press Shift+R"))
     // A chained search launcher reopens searching: Escape closes the search first.
     let searchChained = ["hotkeys": ["bindings": ["Primary+Shift+Space": ["hints --action left_click --repeat"],
                                                   "Ctrl+Alt+F": ["hints --action left_click --repeat --search"]]]]
@@ -144,9 +144,9 @@ func runPracticeTests() {
     assert(Neru.tutorialText(.click, in: unmanaged) == "Press ⌘⇧Space, then type the letters on Click me.")
     assert(Neru.tutorialCommand(.click, in: unmanaged) == ["hints", "--action", "left_click", "--exit-on-unmatched"])
     assert(Neru.tutorialText(.grid, in: unmanaged)
-        == "Press ⌘⇧G, type the letters of the cell with the dot, then the key of the small square on it: it clicks there.")
+        == "Press ⌘⇧G, type the letters of the cell with the dot, then the letter of the small square on the dot. The grid clicks there.")
     assert(Neru.tutorialCommand(.grid, in: unmanaged) == ["grid", "--action", "left_click"])
-    assert(Neru.tutorialSummary(in: unmanaged).map(\.keys) == [["⌘⇧Space"], ["⌘⇧Space", "/"], ["⌘⇧S"], ["⌘⇧G"]])
+    assert(Neru.tutorialSummary(in: unmanaged).map(\.keys) == ["⌘⇧Space", "⌘⇧Space, then /", "⌘⇧S", "⌘⇧G"])
     let both = ["hotkeys": ["bindings": ["Ctrl+H": ["hints --role link"], "Primary+Shift+Space": ["hints --action left_click"],
                                          "Ctrl+G": ["grid --action right_click"], "Primary+Shift+G": ["grid"]]]]
     assert(Neru.tutorialCommand(.click, in: both) == ["hints", "--action", "left_click"])
@@ -159,17 +159,20 @@ func runPracticeTests() {
     assert(Neru.tutorialCommand(.search, in: searchOnly) == ["hints", "--action", "left_click", "--search", "--hide-on-empty-search"])
     assert(Neru.tutorialText(.click, in: searchOnly)
         == "Labels have no shortcut yet. Use Try it here, or set one in Settings › Clicking. Show the labels, then type the letters on Click me.")
+    // Showing the labels again takes a click, which moves the pointer: Tab moves it back.
+    assert(Neru.tutorialText(.rightClick, in: searchOnly) == "Labels have no shortcut yet. Use Try it here, or set one in Settings › Clicking. "
+        + "Show the labels, press Tab until the pointer is on Right-click me, then press Shift+R: it right-clicks where the pointer is. "
+        + "Then press Escape to hide the labels.")
 
     // No shortcuts at all: say so and point to Try it here and Settings.
     let none = ["hotkeys": ["bindings": [String: [String]]()], "systray": ["enabled": false]]
     assert(Neru.tutorialText(.scroll, in: none)
-        .hasPrefix("Scroll mode has no shortcut yet. Use Try it here, or set one in Settings › Scrolling. "
-            + "It scrolls what is under the pointer: keep it over the list. J and K"))
+        .hasPrefix("Scroll mode has no shortcut yet. Use Try it here, or set one in Settings › Scrolling. J and K"))
     assert(Neru.tutorialText(.showLabels, in: none).hasPrefix("Labels have no shortcut yet. Use Try it here, or set one in Settings › Clicking."))
     assert(Neru.tutorialText(.grid, in: ["hotkeys": ["bindings": [String: [String]]()]])
         .hasPrefix("The grid has no shortcut yet. Use Try it here, the menu bar icon, or set one in Settings › Grid. Type the letters"))
     assert(Neru.tutorialCommand(.click, in: none) == ["hints"])
-    assert(Neru.tutorialSummary(in: none).allSatisfy(\.keys.isEmpty))
+    assert(Neru.tutorialSummary(in: none).allSatisfy { $0.keys == "No shortcut" })
 
     // Inverted scrolling turns every scroll key around.
     var inverted = user
@@ -186,11 +189,15 @@ func runPracticeTests() {
     // Scoring: a hit is the round's click on the target, anything else a
     // miss; a round is ten hits, and a press after it counts for nothing.
     var score = TrainingScore(click: .right)
-    assert(!score.press(onTarget: true, .left, after: 1))
-    assert(!score.press(onTarget: false, .right, after: 1))
+    assert(!score.press(onTarget: true, .left, after: 1) && score.misses == 0, "a label's left click on the way: neither")
+    assert(!score.press(onTarget: false, .left, after: 1))
+    assert(!score.press(onTarget: true, .middle, after: 1))
     assert(score.press(onTarget: true, .right, after: 1))
     assert(score.press(onTarget: true, .right, after: 2))
     assert(score.hits == 2 && score.misses == 2 && score.average == 1.5)
+    var clicking = TrainingScore(click: .left)
+    _ = clicking.press(onTarget: true, .right, after: 1)
+    assert(clicking.misses == 1, "the wrong button")
     for _ in 0 ..< 7 { _ = score.press(onTarget: true, .right, after: 1.5) }
     assert(!score.finished)
     assert(score.press(onTarget: true, .right, after: 1.5))
@@ -230,8 +237,16 @@ func runPracticeTests() {
         let deal = TrainingBoard.deal(.clicking, in: board, avoiding: "Save")
         assert(deal.words[deal.target] != "Save")
     }
+    // A search finds one word only: none holds another, or is held by the
+    // window's controls or a Dock or menu bar title there by default.
     let words = TrainingBoard.words.map { $0.lowercased() }
     assert(Set(words).count == 24)
-    for word in words { assert(words.filter { $0.contains(word) } == [word], word) }
+    let others = ["clicking", "right-click", "search", "grid", "start", "stop", "finder", "downloads", "trash", "clock",
+                  "settings", "safari", "mail", "notes", "music", "photos", "calendar", "control center", "spotlight",
+                  "wi-fi", "battery", "launchpad", "now playing"]
+    for word in words {
+        func holds(_ text: String) -> Bool { text.contains(word) || word.contains(text) }
+        assert(words.filter(holds) == [word] && !others.contains(where: holds), word)
+    }
     print("practice ok")
 }

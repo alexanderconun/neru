@@ -57,28 +57,34 @@ final class ClickButton: NSButton {
     override func otherMouseDown(with event: NSEvent) { if isEnabled { onClick?(.middle) } }
 }
 
-/// A clickable dot that is deliberately not a button: no accessibility role,
-/// so labels never land on it and only the grid can reach it.
+/// A clickable dot `size` across that is deliberately not a button: no
+/// accessibility role, so labels never land on it and only the grid can
+/// reach it. Its view is DotView.side across around the drawn dot: a grid's
+/// subgrid square (up to 40 pt) clicks its middle, which may be off the dot.
 struct PracticeDot: NSViewRepresentable {
     var enabled = true
+    var size: CGFloat = 18
     let onClick: (ClickKind) -> Void
 
     func makeNSView(context: Context) -> DotView { DotView() }
 
     func updateNSView(_ dot: DotView, context: Context) {
         dot.enabled = enabled
+        dot.size = size
         dot.onClick = onClick
         dot.needsDisplay = true
     }
 }
 
 final class DotView: NSView {
+    static let side: CGFloat = 44
     var enabled = true
+    var size: CGFloat = 18
     var onClick: ((ClickKind) -> Void)?
 
     override func draw(_ dirtyRect: NSRect) {
         (enabled ? NSColor.controlAccentColor : .tertiaryLabelColor).setFill()
-        NSBezierPath(ovalIn: bounds.insetBy(dx: 1, dy: 1)).fill()
+        NSBezierPath(ovalIn: NSRect(x: bounds.midX - size / 2, y: bounds.midY - size / 2, width: size, height: size)).fill()
     }
 
     override func isAccessibilityElement() -> Bool { false }
@@ -152,6 +158,22 @@ extension Neru {
         queue.async {
             let result = self.run(args)
             if !result.ok { DispatchQueue.main.async { self.error = result.out } }
+        }
+    }
+
+    /// Has labels that are up read the window again, after a practice board
+    /// changed under them: `hints` while hints is open scans again in place
+    /// and keeps the flags it was opened with. That drops a search, so
+    /// `search` (the Search round) opens it again.
+    func relabel(search: Bool) {
+        // ponytail: a fixed pause for the new board to be drawn and for a
+        // label's own click to close its mode first; the status read makes
+        // a late close harmless.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            self.queue.async {
+                guard Self.json(self.run(["status", "--json"]).out)?["mode"] as? String == "hints" else { return }
+                _ = self.run(search ? ["hints", "--search"] : ["hints"])
+            }
         }
     }
 

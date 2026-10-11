@@ -124,7 +124,10 @@ are windows of the settings app, so you work through them with Homekey itself:
 - **Training**: rounds of ten hits on the ★ button (Clicking, Right-click,
   Search) or on a dot only the grid reaches (Grid). The best average of each
   round type is kept in the settings app's defaults
-  (`com.alexanderconun.neru.settings`, keys `trainingBest.<round>`).
+  (`com.alexanderconun.neru.settings`, keys `trainingBest.<round>`). In a
+  Right-click round the left click a label gives the ★ button on the way is
+  no miss. After a hit the board deals again, and labels still up read it
+  again (`neru hints` while they show refreshes them in place).
 
 The daemon opens each window with
 `open -a "<…>/Helpers/Homekey Settings.app" homekey-settings://<settings|tutorial|training>`,
@@ -145,7 +148,9 @@ To check the windows' layout without screen recording, render them offscreen:
 ```
 
 It writes light and dark PNGs of every tutorial step, the finished screen and
-each training round, never runs the CLI and never writes defaults. `dump.json`
+each training round, never runs the CLI and never writes defaults. Training
+boards are dealt the same every time, the same as homekey-rs's renders, so the
+two versions can be compared side by side. `dump.json`
 is a saved `neru config dump` to render with; without it the default shortcuts
 are used.
 

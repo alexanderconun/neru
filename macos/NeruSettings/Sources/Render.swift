@@ -30,9 +30,8 @@ enum Render {
                 draw("tutorial-\(step.rawValue + 1)", TutorialView(progress: progress))
             }
             var progress = TutorialProgress()
-            progress.step = .click
-            progress.done = [.showLabels, .click]
-            draw("tutorial-2-done", TutorialView(progress: progress))
+            progress.done = [.showLabels]
+            draw("tutorial-1-done", TutorialView(progress: progress))
             progress.step = nil
             progress.done = Set(TutorialStep.allCases)
             draw("tutorial-finished", TutorialView(progress: progress))
@@ -52,7 +51,8 @@ enum Render {
             }
             let done = Training(defaults: nil)
             done.start()
-            for _ in 0 ..< TrainingScore.hitsPerRound { done.press(done.board.target, .left) }
+            for miss in [0, 1] { done.press(miss, .left) }
+            for _ in 0 ..< TrainingScore.hitsPerRound { done.press(done.board.target, .left, at: done.board.shownAt + 1.23) }
             draw("training-done", TrainingView(training: done))
         }
         exit(0)
@@ -62,6 +62,7 @@ enum Render {
     private static func snapshot(_ view: some View, appearance: NSAppearance.Name, to url: URL) {
         let host = NSHostingView(rootView: view
             .environment(\.controlActiveState, .key) // as if focused, not greyed
+            .scrollIndicators(.never) // a legacy scroller's gutter offscreen; overlay ones draw nothing
             .background(Color(nsColor: .windowBackgroundColor)))
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize), styleMask: .borderless,
                               backing: .buffered, defer: false)

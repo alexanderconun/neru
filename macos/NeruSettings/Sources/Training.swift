@@ -23,8 +23,11 @@ struct TrainingView: View {
                     .labelsHidden()
                     .fixedSize()
                     Spacer()
-                    Button(training.running ? "Stop" : "Start") { training.running ? training.stop() : training.start() }
-                        .frame(minWidth: 70)
+                    Button(training.running ? "Stop" : "Start") {
+                        training.running ? training.stop() : training.start()
+                        training.relabel(training.round == .search)
+                    }
+                    .frame(minWidth: 70)
                 }
                 Text(stats).monospacedDigit().foregroundStyle(.secondary)
                 prompt.font(.title3.weight(.semibold))
@@ -33,7 +36,10 @@ struct TrainingView: View {
             .padding(20)
         }
         .frame(width: 760, height: 560)
-        .onAppear { neru.watchModes(true) }
+        .onAppear {
+            neru.watchModes(true)
+            training.relabel = neru.relabel(search:)
+        }
         .onDisappear {
             neru.watchModes(false)
             training.stop()
@@ -98,6 +104,7 @@ final class Training: ObservableObject {
             score = TrainingScore(click: round.click)
             finishedAverage = nil
             deal()
+            relabel(round == .search)
         }
     }
 
@@ -109,6 +116,10 @@ final class Training: ObservableObject {
     @Published private(set) var newBest = false
     private var size = CGSize(width: 720, height: 400)
     private let defaults: UserDefaults?
+    /// Has labels that are up read the board again after it changed under
+    /// them (a hit, Start or Stop, another round), `search` reopening a
+    /// search in the Search round; set by the view.
+    var relabel: (_ search: Bool) -> Void = { _ in }
 
     init(defaults: UserDefaults? = .standard) {
         self.defaults = defaults
@@ -129,28 +140,33 @@ final class Training: ObservableObject {
     /// Ends the round without keeping its score.
     func stop() { running = false }
 
-    func press(_ index: Int, _ kind: ClickKind) {
+    func press(_ index: Int, _ kind: ClickKind, at now: Date = Date()) {
         guard running else { return }
-        let hit = score.press(onTarget: index == board.target, kind, after: Date().timeIntervalSince(board.shownAt))
+        let hit = score.press(onTarget: index == board.target, kind, after: now.timeIntervalSince(board.shownAt))
         if let average = score.average, score.finished {
             running = false
             newBest = TrainingScore.isNewBest(average, than: best)
             if newBest { defaults?.set(average, forKey: round.bestKey) }
             finishedAverage = average
         }
-        if hit { deal() }
+        if hit {
+            deal()
+            relabel(round == .search)
+        }
     }
 
     /// Lays the board out again for its real size, keeping the words and target.
     func resize(_ size: CGSize) {
         guard size != self.size, size.width > 0 else { return }
         self.size = size
-        board.frames = TrainingBoard.place(board.words.count, size: round == .grid ? TrainingBoard.dotSize : TrainingBoard.buttonSize,
-                                           in: size)
+        board.frames = defaults == nil ? TrainingBoard.fixed(round, in: size).frames
+            : TrainingBoard.place(board.words.count, size: round == .grid ? TrainingBoard.dotSize : TrainingBoard.buttonSize, in: size)
     }
 
+    /// A render (no defaults) deals the same board every time.
     private func deal() {
-        board = TrainingBoard.deal(round, in: size, avoiding: board.words.indices.contains(board.target) ? board.words[board.target] : nil)
+        board = defaults == nil ? .fixed(round, in: size)
+            : .deal(round, in: size, avoiding: board.words.indices.contains(board.target) ? board.words[board.target] : nil)
     }
 }
 
@@ -200,10 +216,16 @@ struct TrainingScore {
 
     /// Scores a press on a board item, `seconds` after the target appeared.
     /// A hit is the round's click on the target; anything else on the board
-    /// is a miss. True on a hit; a press after the round counts for nothing.
+    /// is a miss, except a left click on a right-click round's target, which
+    /// is neither: typing its label is the way there (labels click, then
+    /// Shift+R right-clicks at the pointer). True on a hit; a press after
+    /// the round counts for nothing.
     mutating func press(onTarget: Bool, _ kind: ClickKind, after seconds: TimeInterval) -> Bool {
         guard !finished else { return false }
-        guard onTarget, kind == click else { misses += 1; return false }
+        guard onTarget, kind == click else {
+            if !(onTarget && click == .right && kind == .left) { misses += 1 }
+            return false
+        }
         hits += 1
         total += seconds
         return true
@@ -218,13 +240,14 @@ struct TrainingScore {
 /// The board's buttons (or the grid round's dot), where they sit and which is
 /// the target.
 struct TrainingBoard {
-    /// No word is inside another, nor inside the window's own controls, a
-    /// menu, a menu bar item ("Clock") or a Dock app: a search must find
-    /// exactly one match.
+    /// No word holds another, or is held by a control of the window or a
+    /// common Dock or menu bar title: a search must find exactly one match
+    /// (see the test).
     static let words = ["Save", "Open", "Send", "Cancel", "Copy", "Delete", "Print", "Share", "Undo", "Paste", "Clear", "Rename",
                         "Export", "Import", "Reload", "Filter", "Upload", "Archive", "Redo", "Merge", "Sort", "Rotate", "Crop", "Mute"]
     static let buttonSize = CGSize(width: 100, height: 28)
-    static let dotSize = CGSize(width: 18, height: 18)
+    /// The dot's view, around the 18 pt dot drawn in it.
+    static let dotSize = CGSize(width: DotView.side, height: DotView.side)
 
     var words: [String] = []
     var frames: [CGRect] = []
@@ -239,6 +262,20 @@ struct TrainingBoard {
         let frames = place(words.count, size: buttonSize, in: size)
         let target = frames.indices.filter { words[$0] != last }.randomElement() ?? 0
         return TrainingBoard(words: Array(words.prefix(frames.count)), frames: frames, target: target)
+    }
+
+    /// The same board every time, for renders: the round's first words in a
+    /// loose grid, the fifth the target. homekey-rs renders deal the very same.
+    static func fixed(_ round: TrainingRound, in size: CGSize) -> TrainingBoard {
+        let grid = round == .grid, count = max(round.buttons, 1), item = grid ? dotSize : buttonSize
+        let cols = count == 1 ? 1 : count > 12 ? 6 : 4, rows = (count + cols - 1) / cols
+        let cell = CGSize(width: (size.width - 32) / CGFloat(cols), height: (size.height - 32) / CGFloat(rows))
+        let frames = (0 ..< count).map { i in
+            CGRect(x: 16 + CGFloat(i % cols) * cell.width + ((cell.width - item.width - 12) * CGFloat((i + 1) * 7 % 10) / 9).rounded(.down),
+                   y: 16 + CGFloat(i / cols) * cell.height + ((cell.height - item.height - 12) * CGFloat((i + 1) * 3 % 10) / 9).rounded(.down),
+                   width: item.width, height: item.height)
+        }
+        return TrainingBoard(words: grid ? ["dot"] : Array(words.prefix(count)), frames: frames, target: grid ? 0 : 4)
     }
 
     /// Up to `count` rects of `size` at random spots inside `board`, `margin`
