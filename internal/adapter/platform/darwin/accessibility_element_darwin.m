@@ -24,6 +24,17 @@ void *NeruGetSystemWideElement(void) {
 /// @return Focused application reference
 void *NeruGetFocusedApplication(void) {
 	@autoreleasepool {
+		// While we are frontmost, our own AppKit answers the system-wide question
+		// below on the asking thread: ask it from the main thread.
+		if (![NSThread isMainThread] &&
+		    [NSWorkspace sharedWorkspace].frontmostApplication.processIdentifier == getpid()) {
+			__block void *app = NULL;
+			dispatch_sync(dispatch_get_main_queue(), ^{
+				app = NeruGetFocusedApplication();
+			});
+			return app;
+		}
+
 		AXUIElementRef systemWide = AXUIElementCreateSystemWide();
 		if (systemWide) {
 			AXUIElementRef focusedApp = NULL;
