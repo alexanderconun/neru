@@ -1541,6 +1541,10 @@ static const NSUInteger kNeruTextLayoutCacheLimit = 4096;
 static const NSUInteger kNeruGlyphSetLimit = 16;
 
 /// A cache key for color. Equal colors get the same key even as different objects.
+/// Opacity of the letters already typed on a matching grid cell, under the
+/// ones still to type.
+static const CGFloat kNeruGridTypedLetterAlpha = 0.45;
+
 static NSString *NeruColorKey(NSColor *color) {
 	NSColor *rgb = [color colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
 	if (!rgb)
@@ -2050,6 +2054,13 @@ static NeruTextLayout *NeruLayoutFromGlyphStarts(NSString *text, const CGFloat *
 	NSUInteger generation = self.gridStyleGeneration;
 	NeruGlyphSet *glyphs = [self glyphSetForFont:labelFont color:self.cachedGridTextColor scale:scale];
 	NeruGlyphSet *matchedGlyphs = [self glyphSetForFont:labelFont color:self.cachedGridMatchedTextColor scale:scale];
+	// On a matching cell the letters still to type take the matched colour and
+	// the typed ones the same colour dimmed: the plain text colour is drawn
+	// against the light cell fill and vanishes on a matching cell's dark one.
+	NeruGlyphSet *typedGlyphs =
+	    [self glyphSetForFont:labelFont
+	                    color:[self.cachedGridMatchedTextColor colorWithAlphaComponent:kNeruGridTypedLetterAlpha]
+	                    scale:scale];
 	NeruGlyphSet *subKeyGlyphs =
 	    drawSubKeys ? [self glyphSetForFont:subKeyFont color:self.gridSubKeyTextColor scale:scale] : nil;
 
@@ -2172,13 +2183,13 @@ static NeruTextLayout *NeruLayoutFromGlyphStarts(NSString *text, const CGFloat *
 			[self prepareLayoutsOfTexts:texts inSet:glyphs];
 		}
 
+		BOOL typedInto = isMatched && matchedPrefixLength > 0 && matchedGlyphs && typedGlyphs;
 		cell.label = [self placeGridLabel:cell.label
 		                             text:(hideLabel ? nil : label)inCell:cell
 		                         cellRect:cellRect
 		                     parentOrigin:cellRect.origin
-		                           glyphs:glyphs
-		                    matchedGlyphs:matchedGlyphs
-		                        isMatched:isMatched
+		                           glyphs:(typedInto ? matchedGlyphs : glyphs)matchedGlyphs
+		                                 :(typedInto ? typedGlyphs : matchedGlyphs)isMatched:isMatched
 		              matchedPrefixLength:matchedPrefixLength
 		                          opacity:labelOpacity
 		                            scale:scale

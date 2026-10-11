@@ -680,7 +680,7 @@ capture_scope = "window"
 | `border_width`             | int    | `1`     | Border width in pixels                                                                                                     |
 | `background_color`         | color  | derived | Cell background                                                                                                            |
 | `text_color`               | color  | derived | Label text                                                                                                                 |
-| `matched_text_color`       | color  | derived | Matched cell text                                                                                                          |
+| `matched_text_color`       | color  | derived | Matched cell text: the letters still to type; the typed ones are drawn in it at 45% opacity                                |
 | `matched_background_color` | color  | derived | Matched cell background                                                                                                    |
 | `matched_border_color`     | color  | derived | Matched cell border                                                                                                        |
 | `border_color`             | color  | derived | Default cell border                                                                                                        |
