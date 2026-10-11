@@ -40,23 +40,26 @@ final class InProcessDaemon: DaemonLink {
     }
 
     func watch(_ line: @escaping (String?) -> Void) -> () -> Void {
-        let owner = Unmanaged.passRetained(LineBox(line)).toOpaque() // released after the nil line
+        let owner = Unmanaged.passRetained(WatchLines(line)).toOpaque() // released after the nil line
         var handle: UInt = 0
-        watchQueue.async {
-            handle = HomekeyWatch({ owner, cLine in
-                let box = Unmanaged<LineBox>.fromOpaque(owner!)
-                let text = cLine.map { String(cString: $0) } // copied: Go frees it
-                DispatchQueue.main.async {
-                    box.takeUnretainedValue().line(text)
-                    if text == nil { box.release() }
-                }
-            }, owner)
-        }
+        watchQueue.async { handle = HomekeyWatch(owner) }
         return { self.watchQueue.async { HomekeyWatchStop(handle) } }
     }
+}
 
-    private final class LineBox {
-        let line: (String?) -> Void
-        init(_ line: @escaping (String?) -> Void) { self.line = line }
+/// Where a watch's lines go, until its nil line.
+final class WatchLines {
+    let line: (String?) -> Void
+    init(_ line: @escaping (String?) -> Void) { self.line = line }
+}
+
+/// Each line of a watch, on a Go thread: copied, then handed to the main queue.
+@_cdecl("HomekeyWatchLine")
+public func homekeyWatchLine(_ owner: UnsafeMutableRawPointer, _ cLine: UnsafeMutablePointer<CChar>?) {
+    let lines = Unmanaged<WatchLines>.fromOpaque(owner)
+    let text = cLine.map { String(cString: $0) } // copied: Go frees it
+    DispatchQueue.main.async {
+        lines.takeUnretainedValue().line(text)
+        if text == nil { lines.release() }
     }
 }

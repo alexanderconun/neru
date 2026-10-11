@@ -21,11 +21,9 @@
 /// may wait on the main thread: never call it there. Free the reply with free(3).
 char *HomekeyCommand(char *request);
 
-/// fn gets each `neru watch` line on a Go thread, then NULL once when the
-/// stream ends. It must copy the line and return at once; owner is passed
-/// back untouched. Returns the handle HomekeyWatchStop takes, exactly once.
-typedef void (*HomekeyWatchFn)(void *owner, char *line);
-uintptr_t HomekeyWatch(HomekeyWatchFn fn, void *owner);
+/// Streams `neru watch` lines to HomekeyWatchLine(owner, …). Returns the
+/// handle HomekeyWatchStop takes, exactly once, even after the stream ended.
+uintptr_t HomekeyWatch(void *owner);
 void HomekeyWatchStop(uintptr_t watch);
 
 #pragma mark - Swift, called from Go
@@ -33,3 +31,7 @@ void HomekeyWatchStop(uintptr_t watch);
 /// Shows the window named "settings", "tutorial" or "training". Returns at
 /// once from any thread; the window opens on the main thread.
 void HomekeySettingsOpen(char *window);
+
+/// Gets each line of the watch HomekeyWatch(owner) started, on a Go thread,
+/// then NULL once when the stream ends. It copies the line and returns at once.
+void HomekeyWatchLine(void *owner, char *line);

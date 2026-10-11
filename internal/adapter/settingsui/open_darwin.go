@@ -11,11 +11,6 @@ package settingsui
 #cgo LDFLAGS: -L${SRCDIR}/../../../bin -lhomekeysettings -L/usr/lib/swift
 #include <stdlib.h>
 #include "settingsui.h"
-
-// A file with //export may define nothing but statics.
-static inline void homekeyCallWatch(HomekeyWatchFn fn, void *owner, char *line) {
-	fn(owner, line);
-}
 */
 import "C"
 
@@ -45,16 +40,17 @@ func HomekeyCommand(request *C.char) *C.char {
 	return C.CString(string(command(context.Background(), []byte(C.GoString(request)))))
 }
 
-// HomekeyWatch streams watch lines to fn on a Go thread, then a NULL line once
-// when the stream ends. It returns the handle HomekeyWatchStop takes.
+// HomekeyWatch streams watch lines to Swift's HomekeyWatchLine on a Go
+// thread, then a NULL line once when the stream ends. It returns the handle
+// HomekeyWatchStop takes.
 //
 //export HomekeyWatch
-func HomekeyWatch(fn C.HomekeyWatchFn, owner unsafe.Pointer) C.uintptr_t {
+func HomekeyWatch(owner unsafe.Pointer) C.uintptr_t {
 	stop := watch(func(line []byte) {
 		cLine := C.CString(string(line))
-		C.homekeyCallWatch(fn, owner, cLine)
+		C.HomekeyWatchLine(owner, cLine)
 		C.free(unsafe.Pointer(cLine))
-	}, func() { C.homekeyCallWatch(fn, owner, nil) })
+	}, func() { C.HomekeyWatchLine(owner, nil) })
 
 	return C.uintptr_t(cgo.NewHandle(stop))
 }
