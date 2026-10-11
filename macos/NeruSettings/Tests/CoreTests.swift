@@ -113,6 +113,8 @@ func runCoreTests() {
     assert(Shortcut.from(key(15, "R", .shift)) == nil) // R
     assert(Shortcut.from(key(48, "\t", .shift)) == nil) // Tab
     assert(Shortcut.from(key(96, "", .shift)) == "Shift+F5")
-    assert(Shortcut.from(key(15, "r", [.command, .shift])) == "Primary+Shift+R")
+    assert(Shortcut.from(key(49, " ", [.command, .shift])) == "Primary+Shift+Space")
+    // A letter is read in the current layout (R on QWERTY, К on Russian).
+    assert(Shortcut.from(key(15, "r", [.command, .shift]))?.hasPrefix("Primary+Shift+") == true)
     print("core ok")
 }
