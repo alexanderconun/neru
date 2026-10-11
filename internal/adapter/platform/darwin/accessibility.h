@@ -98,6 +98,12 @@ int NeruGetRunningApplicationPIDs(int *pids, int max);
 /// @return Element information structure
 ElementInfo *NeruGetElementInfo(void *element);
 
+/// Whether an element belongs to this process. Reads the pid stored in the
+/// reference: no message is sent, so no AppKit code runs.
+/// @param element Element reference
+/// @return 1 for an element of this process, 0 otherwise
+int NeruIsOwnElement(void *element);
+
 /// Free element information structure
 /// @param info Element information structure
 void NeruFreeElementInfo(ElementInfo *info);
