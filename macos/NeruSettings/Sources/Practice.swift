@@ -155,6 +155,14 @@ extension Neru {
         }
     }
 
+    /// Reads the scroll direction the daemon uses now into scrollInverted.
+    func readScrollInverted() {
+        queue.async {
+            let inverted = Self.json(self.run(["status", "--json"]).out)?["scroll_inverted"] as? Bool
+            DispatchQueue.main.async { self.scrollInverted = inverted }
+        }
+    }
+
     private func startWatch() {
         guard watchers > 0, watcher == nil else { return }
         guard let binary else { return retryWatch() }
@@ -208,6 +216,7 @@ extension Neru {
             modeEvents.send((mode: event["mode"] as? String ?? "", entered: false))
         case "config_reload":
             background { nil } // re-reads the dump, so the instructions follow
+            readScrollInverted() // a reload puts the config's direction back
         default:
             break
         }

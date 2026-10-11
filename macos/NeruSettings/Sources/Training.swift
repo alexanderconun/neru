@@ -47,7 +47,12 @@ struct TrainingView: View {
     }
 
     private var prompt: Text {
-        if training.running { return Text(training.round.prompt(training.board.words[training.board.target])) }
+        if training.running {
+            // Without Automatic click, Return on a search only moves the pointer.
+            let keys = PracticeKeys(neru.config)
+            let click = keys.launchers.autoClick ? nil : keys.hintsKey("action left_click", or: "Shift+L")
+            return Text(training.round.prompt(training.board.words[training.board.target], clickKey: click))
+        }
         if let average = training.finishedAverage {
             let done = Text(String(format: "Round done: avg %.2f s", average))
             return training.newBest ? Text("\(done)   \(Text("New best!").foregroundStyle(.green))") : done
@@ -170,11 +175,13 @@ enum TrainingRound: String, CaseIterable, Identifiable {
     /// The UserDefaults key of this round type's best average.
     var bestKey: String { "trainingBest.\(self)" }
 
-    func prompt(_ word: String) -> String {
+    /// `clickKey` is the key that clicks after a search's Return, when
+    /// Return only moves the pointer there (Automatic click off).
+    func prompt(_ word: String, clickKey: String? = nil) -> String {
         switch self {
         case .clicking: "Click ★ \(word)"
         case .rightClick: "Right-click ★ \(word)"
-        case .search: "Search for \(word) and press Return"
+        case .search: clickKey.map { "Search for \(word), press Return, then \($0)" } ?? "Search for \(word) and press Return"
         case .grid: "Click the dot with the grid"
         }
     }
@@ -211,9 +218,10 @@ struct TrainingScore {
 /// The board's buttons (or the grid round's dot), where they sit and which is
 /// the target.
 struct TrainingBoard {
-    /// No word contains another, nor names the window's own controls, a menu
-    /// or a Dock app: a search must find exactly one match.
-    static let words = ["Save", "Open", "Send", "Cancel", "Copy", "Delete", "Print", "Share", "Undo", "Paste", "Lock", "Rename",
+    /// No word is inside another, nor inside the window's own controls, a
+    /// menu, a menu bar item ("Clock") or a Dock app: a search must find
+    /// exactly one match.
+    static let words = ["Save", "Open", "Send", "Cancel", "Copy", "Delete", "Print", "Share", "Undo", "Paste", "Clear", "Rename",
                         "Export", "Import", "Reload", "Filter", "Upload", "Archive", "Redo", "Merge", "Sort", "Rotate", "Crop", "Mute"]
     static let buttonSize = CGSize(width: 100, height: 28)
     static let dotSize = CGSize(width: 18, height: 18)

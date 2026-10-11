@@ -54,11 +54,13 @@ extension Neru {
     }
 
     /// nil unless `steps` is a single `hints` command made only of the flags
-    /// this page manages.
-    static func parseLauncher(_ steps: [String]) -> Launcher? {
+    /// this page manages. `lenient` skips any other flag instead, for reading
+    /// what a user's own launcher does (the Tutorial); `mode` reads another
+    /// mode's command the same way (`grid --action left_click`).
+    static func parseLauncher(_ steps: [String], mode: String = "hints", lenient: Bool = false) -> Launcher? {
         guard steps.count == 1 else { return nil }
         var words = steps[0].split(whereSeparator: \.isWhitespace).map(String.init)[...]
-        guard words.popFirst() == "hints" else { return nil }
+        guard words.popFirst() == mode else { return nil }
         var launcher = Launcher()
         if let first = words.first, !first.hasPrefix("-") { launcher.action = words.popFirst() }
         while let word = words.popFirst() {
@@ -72,7 +74,7 @@ extension Neru {
             case "--repeat", "-r": launcher.repeats = true
             case "--search", "-s": launcher.search = true
             case "--hide-on-empty-search": launcher.hideOnEmpty = true
-            default: return nil
+            default: if !lenient { return nil }
             }
         }
         return launcher
@@ -83,13 +85,18 @@ extension Neru {
     /// bound twice by hand shows its first combo; only that one is managed,
     /// the others stay as written (they may differ on purpose, e.g. a
     /// move-only and a clicking main launcher).
-    static func launchers(in bindings: [String: [String]]) -> Launchers {
+    /// `lenient` then fills the roles still empty from launchers with other
+    /// flags too, so a managed one still wins.
+    static func launchers(in bindings: [String: [String]], lenient: Bool = false) -> Launchers {
         var set = Launchers()
         var first: [LauncherRole: Launcher] = [:]
-        for combo in bindings.keys.sorted() {
-            guard let launcher = parseLauncher(bindings[combo]!), let role = launcher.role, first[role] == nil else { continue }
-            first[role] = launcher
-            set.combos[role] = combo
+        for loose in lenient ? [false, true] : [false] {
+            for combo in bindings.keys.sorted() {
+                guard let launcher = parseLauncher(bindings[combo]!, lenient: loose), let role = launcher.role, first[role] == nil
+                else { continue }
+                first[role] = launcher
+                set.combos[role] = combo
+            }
         }
         let clicker = first[.main] ?? first[.search]
         set.autoClick = clicker?.action != nil

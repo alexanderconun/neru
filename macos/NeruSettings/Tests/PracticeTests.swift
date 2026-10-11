@@ -101,11 +101,13 @@ func runPracticeTests() {
     assert(Neru.tutorialText(.showLabels, in: user)
         == "Press ⌘⇧Space to show labels. Letters appear on every button you can click. Press Escape to hide them.")
     assert(Neru.tutorialText(.click, in: user) == "Press ⌘⇧Space, then type the letters on Click me.")
-    assert(Neru.tutorialText(.rightClick, in: user).contains("Press ⌘⇧Space again and then Shift+R: it right-clicks where the pointer is."))
+    assert(Neru.tutorialText(.rightClick, in: user) == "Press ⌘⇧Space and type the label on Right-click me: it gets a left click, and the "
+        + "pointer is now on it. Press ⌘⇧Space again and then Shift+R: it right-clicks where the pointer is. Then press Escape to hide the labels.")
     assert(Neru.tutorialText(.search, in: user) == "Press ⌘⇧Space, then /, type rocket and press Return.")
     assert(Neru.tutorialText(.scroll, in: user) == "Put the pointer over the list and press ⌘⇧S. J and K scroll down and up, "
         + "D and U by half a page, gg goes to the top and Shift+G to the bottom. Escape stops.")
-    assert(Neru.tutorialText(.grid, in: user).hasPrefix("Press ⌘⇧G, type the letters of the cell with the dot"))
+    assert(Neru.tutorialText(.grid, in: user) == "Press ⌘⇧G, type the letters of the cell with the dot, then the key of the small square "
+        + "on it. Press Shift+L to click, then Escape to close the grid.")
     assert(Neru.tutorialCommand(.click, in: user) == ["hints", "--action", "left_click"])
     assert(Neru.tutorialCommand(.rightClick, in: user) == ["hints", "--action", "left_click"])
     assert(Neru.tutorialCommand(.scroll, in: user) == ["scroll"])
@@ -126,22 +128,60 @@ func runPracticeTests() {
     // Chain clicks: the labels come back after the click.
     let chained = ["hotkeys": ["bindings": ["Primary+Shift+Space": ["hints --action left_click --repeat"]]]]
     assert(Neru.tutorialText(.click, in: chained).hasSuffix("The labels come back after the click; press Escape to hide them."))
-    assert(Neru.tutorialText(.rightClick, in: chained).contains("the labels come back. Press Shift+R"))
+    assert(Neru.tutorialText(.rightClick, in: chained).contains("it gets a left click, the pointer stays on it and the labels come back. Press Shift+R"))
+    // A chained search launcher reopens searching: Escape closes the search first.
+    let searchChained = ["hotkeys": ["bindings": ["Primary+Shift+Space": ["hints --action left_click --repeat"],
+                                                  "Ctrl+Alt+F": ["hints --action left_click --repeat --search"]]]]
+    assert(Neru.tutorialText(.search, in: searchChained) == "Press ⌃⌥F, type rocket and press Return. The labels and the search come back "
+        + "after the click; press Escape to close the search, then Escape to hide the labels.")
+    assert(Neru.tutorialText(.search, in: chained).hasSuffix("The labels come back after the click; press Escape to hide them."))
+
+    // Launchers with flags the Clicking page leaves alone still have their
+    // shortcut, click as they do, and Try it here runs them as bound. A
+    // managed launcher wins over one bound earlier with other flags.
+    let unmanaged = ["hotkeys": ["bindings": ["Primary+Shift+Space": ["hints --action left_click --exit-on-unmatched"],
+                                              "Primary+Shift+G": ["grid --action left_click"], "Primary+Shift+S": ["scroll"]]]]
+    assert(Neru.tutorialText(.click, in: unmanaged) == "Press ⌘⇧Space, then type the letters on Click me.")
+    assert(Neru.tutorialCommand(.click, in: unmanaged) == ["hints", "--action", "left_click", "--exit-on-unmatched"])
+    assert(Neru.tutorialText(.grid, in: unmanaged)
+        == "Press ⌘⇧G, type the letters of the cell with the dot, then the key of the small square on it: it clicks there.")
+    assert(Neru.tutorialCommand(.grid, in: unmanaged) == ["grid", "--action", "left_click"])
+    assert(Neru.tutorialSummary(in: unmanaged).map(\.keys) == [["⌘⇧Space"], ["⌘⇧Space", "/"], ["⌘⇧S"], ["⌘⇧G"]])
+    let both = ["hotkeys": ["bindings": ["Ctrl+H": ["hints --role link"], "Primary+Shift+Space": ["hints --action left_click"],
+                                         "Ctrl+G": ["grid --action right_click"], "Primary+Shift+G": ["grid"]]]]
+    assert(Neru.tutorialCommand(.click, in: both) == ["hints", "--action", "left_click"])
+    assert(Neru.tutorialCommand(.grid, in: both) == ["grid"])
+
+    // Only a search shortcut: Try it here runs it without its search, so
+    // typing a label clicks as the text says; the menu bar's labels would not.
+    let searchOnly = ["hotkeys": ["bindings": ["Ctrl+F": ["hints --action left_click --search --hide-on-empty-search"]]]]
+    assert(Neru.tutorialCommand(.click, in: searchOnly) == ["hints", "--action", "left_click"])
+    assert(Neru.tutorialCommand(.search, in: searchOnly) == ["hints", "--action", "left_click", "--search", "--hide-on-empty-search"])
+    assert(Neru.tutorialText(.click, in: searchOnly)
+        == "Labels have no shortcut yet. Use Try it here, or set one in Settings › Clicking. Show the labels, then type the letters on Click me.")
 
     // No shortcuts at all: say so and point to Try it here and Settings.
     let none = ["hotkeys": ["bindings": [String: [String]]()], "systray": ["enabled": false]]
     assert(Neru.tutorialText(.scroll, in: none)
-        .hasPrefix("Scroll mode has no shortcut yet. Use Try it here, or set one in Settings › Scrolling. J and K"))
+        .hasPrefix("Scroll mode has no shortcut yet. Use Try it here, or set one in Settings › Scrolling. "
+            + "It scrolls what is under the pointer: keep it over the list. J and K"))
     assert(Neru.tutorialText(.showLabels, in: none).hasPrefix("Labels have no shortcut yet. Use Try it here, or set one in Settings › Clicking."))
     assert(Neru.tutorialText(.grid, in: ["hotkeys": ["bindings": [String: [String]]()]])
         .hasPrefix("The grid has no shortcut yet. Use Try it here, the menu bar icon, or set one in Settings › Grid. Type the letters"))
     assert(Neru.tutorialCommand(.click, in: none) == ["hints"])
-    assert(Neru.tutorialSummary(in: none).allSatisfy { $0.keys == "No shortcut" })
+    assert(Neru.tutorialSummary(in: none).allSatisfy(\.keys.isEmpty))
 
     // Inverted scrolling turns every scroll key around.
     var inverted = user
     inverted["scroll"] = ["hotkeys": Neru.defaultScrollHotkeys.mapValues { [$0] }, "invertScroll": true]
     assert(Neru.tutorialText(.scroll, in: inverted).contains("K and J scroll down and up, U and D by half a page, Shift+G goes to the top and gg"))
+    // The daemon's own direction wins over the config's: the menu bar flips it.
+    assert(Neru.tutorialText(.scroll, in: user, inverted: true).contains("K and J scroll down and up"))
+    assert(Neru.tutorialText(.scroll, in: inverted, inverted: false).contains("J and K scroll down and up"))
+
+    // Without Automatic click, Return on a search only moves the pointer.
+    assert(TrainingRound.search.prompt("Redo") == "Search for Redo and press Return")
+    assert(TrainingRound.search.prompt("Redo", clickKey: "Shift+L") == "Search for Redo, press Return, then Shift+L")
 
     // Scoring: a hit is the round's click on the target, anything else a
     // miss; a round is ten hits, and a press after it counts for nothing.

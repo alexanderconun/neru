@@ -23,6 +23,11 @@ func runLauncherTests() {
         assert(role(command) == nil, command)
     }
     assert(Neru.parseLauncher(["hints", "action search_hints"]) == nil)
+    // Lenient (the Tutorial): other flags are skipped, so a user's own launcher still reads.
+    assert(Neru.parseLauncher(["hints --exit-on-unmatched -a left_click --role AXButton -r"], lenient: true)
+        == Neru.Launcher(action: "left_click", repeats: true))
+    assert(Neru.parseLauncher(["grid --action left_click"], mode: "grid", lenient: true)?.action == "left_click")
+    assert(Neru.parseLauncher(["hints --action"], lenient: true) == nil)
 
     // Composition never writes a flag without the one it needs.
     var set = Neru.Launchers(autoClick: false, chain: true, hideLabels: true)

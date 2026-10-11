@@ -24,6 +24,9 @@ final class Neru: ObservableObject {
     let modeEvents = PassthroughSubject<(mode: String, entered: Bool), Never>()
     var watcher: Process?
     var watchers = 0
+    /// Whether the daemon scrolls inverted now, from `status --json`; the
+    /// menu bar flips it without a config change. nil until read.
+    @Published var scrollInverted: Bool?
 
     private(set) var binary: String?
     private(set) var configPath = ""

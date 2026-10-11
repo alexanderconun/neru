@@ -18,70 +18,79 @@ struct TutorialView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            PracticeBanners()
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("\(Neru.appName) Tutorial").font(.title2.bold())
-                    Spacer()
-                    Text(progress.step.map { "Step \($0.rawValue + 1) of \(TutorialStep.allCases.count)" } ?? "Finished")
-                        .foregroundStyle(.secondary)
-                }
-                HStack(alignment: .top, spacing: 16) {
-                    stepList
+        HStack(spacing: 0) {
+            stepList
+            VStack(spacing: 0) {
+                PracticeBanners()
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("\(Neru.appName) Tutorial").font(.title2.bold())
+                        Spacer()
+                        if let step = progress.step {
+                            Text("Step \(step.rawValue + 1) of \(TutorialStep.allCases.count)").foregroundStyle(.secondary)
+                        }
+                    }
                     if let step = progress.step { stepPage(step) } else { finished }
                 }
+                .padding(20)
             }
-            .padding(20)
         }
         .frame(width: 760, height: 560)
         .onAppear { neru.watchModes(true) }
         .onDisappear { neru.watchModes(false) }
         .onReceive(neru.modeEvents) { event in
             progress.modeChanged(event.mode, entered: event.entered, windowIsKey: activeState == .key, at: Date())
+            if event.entered, event.mode == "scroll" { neru.readScrollInverted() }
         }
+        // The menu bar flips scrolling without a config change or an event:
+        // read it again whenever the scroll step may be read.
+        .onChange(of: activeState, initial: true) { _, state in if state == .key { neru.readScrollInverted() } }
+        .onChange(of: progress.step) { _, step in if step == .scroll { neru.readScrollInverted() } }
     }
 
+    /// A full-height sidebar like the Settings window's: ✓ done, ▶ current,
+    /// nothing for the steps to come.
     private var stepList: some View {
-        PracticeCard {
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(TutorialStep.allCases) { step in
-                    let current = step == progress.step
-                    Button { progress.step = step } label: {
-                        HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(TutorialStep.allCases) { step in
+                let current = step == progress.step
+                Button { progress.step = step } label: {
+                    HStack(spacing: 8) {
+                        Group {
                             if progress.done.contains(step) {
-                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                                Image(systemName: "checkmark").fontWeight(.bold).foregroundStyle(.green)
                             } else if current {
-                                Image(systemName: "play.circle.fill").foregroundStyle(Color.accentColor)
-                            } else {
-                                Image(systemName: "circle").foregroundStyle(.tertiary)
+                                Image(systemName: "play.fill").foregroundStyle(Color.accentColor)
                             }
-                            Text(step.title).fontWeight(current ? .semibold : .regular)
-                            Spacer(minLength: 0)
                         }
-                        .padding(.vertical, 6).padding(.horizontal, 8)
-                        .contentShape(Rectangle())
-                        .background(current ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 6))
+                        .frame(width: 16)
+                        Text(step.title)
+                        Spacer(minLength: 0)
                     }
-                    .buttonStyle(.plain)
+                    .padding(.vertical, 6).padding(.horizontal, 8)
+                    .contentShape(Rectangle())
+                    .background(current ? Color(nsColor: .unemphasizedSelectedContentBackgroundColor) : .clear,
+                                in: RoundedRectangle(cornerRadius: 6))
                 }
+                .buttonStyle(.plain)
             }
+            Spacer()
         }
+        .padding(10).padding(.top, 10)
         .frame(width: 200)
-        .fixedSize(horizontal: false, vertical: true)
+        .background(SidebarBackground())
     }
 
     private func stepPage(_ step: TutorialStep) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(step.title).font(.headline)
-            Text(Neru.tutorialText(step, in: neru.config))
+            Text(Neru.tutorialText(step, in: neru.config, inverted: neru.scrollInverted))
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
             PracticeCard { practice(step).frame(maxWidth: .infinity, maxHeight: .infinity) }
                 .overlay(alignment: .topTrailing) {
                     if progress.done.contains(step) {
-                        Label("Nice!", systemImage: "checkmark.circle.fill")
-                            .font(.headline).foregroundStyle(.green).padding(12)
+                        Text("Nice!").font(.headline).foregroundStyle(.green).padding(12)
                     }
                 }
             HStack {
@@ -103,24 +112,23 @@ struct TutorialView: View {
         switch step {
         case .showLabels:
             HStack(spacing: 12) {
-                ForEach(["Apple", "Banana", "Cherry"], id: \.self) { PracticeButton(title: $0) { _ in }.frame(width: 96) }
+                ForEach(["Apple", "Banana", "Cherry"], id: \.self) { PracticeButton(title: $0) { _ in }.fixedSize() }
             }
         case .click:
-            target("Click me").fixedSize()
+            target("Click me")
         case .rightClick:
-            target("Right-click me").fixedSize()
+            target("Right-click me")
         case .search:
             Grid(horizontalSpacing: 12, verticalSpacing: 12) {
                 ForEach([TutorialProgress.places.prefix(4), TutorialProgress.places.suffix(4)], id: \.self) { row in
-                    GridRow { ForEach(row, id: \.self) { target($0).frame(width: 96) } }
+                    GridRow { ForEach(row, id: \.self) { target($0) } }
                 }
             }
         case .scroll:
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(1...40, id: \.self) { row in
-                        Text("Row \(row)").padding(.vertical, 5).padding(.horizontal, 10)
-                        Divider()
+                        Text("Row \(row)").padding(.vertical, 4).padding(.horizontal, 12)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -136,8 +144,9 @@ struct TutorialView: View {
             }
             .onDisappear { listOffset = nil }
             .background(ViewAnchor(view: listAnchor))
-            .frame(width: 280)
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(nsColor: .separatorColor)))
+            .frame(width: 300, height: 240)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(nsColor: .separatorColor)))
         case .grid:
             PracticeDot { progress.clicked(TutorialProgress.dot, $0, at: Date()) }
                 .frame(width: 22, height: 22)
@@ -146,34 +155,45 @@ struct TutorialView: View {
                 .padding(.trailing, 90)
         case .chain:
             VStack(spacing: 16) {
-                VStack(spacing: 4) {
-                    Toggle("Chain clicks", isOn: Binding(get: { neru.launchers.chain }, set: { on in
+                VStack(spacing: 8) {
+                    Toggle(isOn: Binding(get: { neru.launchers.chain }, set: { on in
                         neru.setLaunchers { set, _ in set.chain = on }
-                    }))
+                    })) { Text("Chain clicks").frame(maxWidth: .infinity, alignment: .leading) }
                     .toggleStyle(.switch)
                     .disabled(!neru.launchers.autoClick)
-                    Text("You can turn it off again here or in Settings").font(.caption).foregroundStyle(.secondary)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
+                    .frame(width: 320)
+                    Text("You can turn it off again here or in Settings").font(.callout).foregroundStyle(.secondary)
                 }
-                HStack(spacing: 12) { ForEach(["1", "2", "3"], id: \.self) { target($0).frame(width: 56) } }
+                HStack(spacing: 12) { ForEach(["1", "2", "3"], id: \.self) { target($0) } }
             }
         }
     }
 
-    private func target(_ title: String) -> PracticeButton {
-        PracticeButton(title: title) { progress.clicked(title, $0, at: Date()) }
+    private func target(_ title: String) -> some View {
+        PracticeButton(title: title) { progress.clicked(title, $0, at: Date()) }.fixedSize()
     }
 
     private var finished: some View {
         let shortcuts = Neru.tutorialSummary(in: neru.config)
         return VStack(alignment: .leading, spacing: 14) {
             Text("You're all set.").font(.headline)
+            Text("Your shortcuts").font(.headline).padding(.leading, 14).padding(.top, 8)
             PracticeCard {
-                Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
-                    ForEach(shortcuts, id: \.what) { row in
-                        GridRow {
+                VStack(spacing: 0) {
+                    ForEach(Array(shortcuts.enumerated()), id: \.offset) { index, row in
+                        if index > 0 { Divider() }
+                        HStack(spacing: 6) {
                             Text(row.what)
-                            Text(row.keys).foregroundStyle(.secondary)
+                            Spacer()
+                            if row.keys.isEmpty { Text("Not set").foregroundStyle(.secondary) }
+                            ForEach(Array(row.keys.enumerated()), id: \.offset) { index, key in
+                                if index > 0 { Text("then").foregroundStyle(.secondary) }
+                                Keycap(key)
+                            }
                         }
+                        .padding(.vertical, 6)
                     }
                 }
             }
@@ -200,6 +220,31 @@ struct TutorialView: View {
         // label's click ends its mode first) and for this window to be the
         // focused one the mode scans; wait for didBecomeActive if it proves short.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { neru.runMode(command) }
+    }
+}
+
+/// The Settings window's sidebar material, behind the step list.
+private struct SidebarBackground: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
+
+/// A shortcut drawn as a key.
+private struct Keycap: View {
+    let key: String
+    init(_ key: String) { self.key = key }
+
+    var body: some View {
+        Text(key).font(.callout.weight(.semibold))
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(nsColor: .separatorColor)))
     }
 }
 
@@ -292,13 +337,16 @@ struct TutorialProgress {
 extension Neru {
     /// The instructions for `step`, written from the shortcuts and in-mode
     /// keys in `dump`, the way they really behave with its click settings.
-    static func tutorialText(_ step: TutorialStep, in dump: [String: Any]) -> String {
-        let keys = PracticeKeys(dump)
+    /// `inverted` is the daemon's scroll direction when known (see PracticeKeys).
+    static func tutorialText(_ step: TutorialStep, in dump: [String: Any], inverted: Bool? = nil) -> String {
+        let keys = PracticeKeys(dump, inverted: inverted)
         let hints = keys.shortcut(.main)
         let escape = keys.hintsKey("idle", or: "Escape")
         let leftClick = keys.hintsKey("action left_click", or: "Shift+L")
         let rightClick = keys.hintsKey("action right_click", or: "Shift+R")
-        let noHints = keys.missing("Labels have", page: "Clicking", menuBar: true)
+        // The menu bar's labels only move the pointer: with Automatic click on
+        // they would not do what the text says (Try it here does).
+        let noHints = keys.missing("Labels have", page: "Clicking", menuBar: !keys.launchers.autoClick)
         let show = hints.map { "Press \($0)" } ?? "\(noHints) Show the labels"
         // Typing a label clicks with Automatic click, and Chain clicks brings the labels back.
         let afterClick = !keys.launchers.autoClick
@@ -317,19 +365,24 @@ extension Neru {
                 return "\(show) and type the label on Right-click me: the pointer moves there. \(rightClickThere)"
             }
             if keys.launchers.chain {
-                return "\(show) and type the label on Right-click me: it is clicked, the pointer stays on it and the labels come back. \(rightClickThere)"
+                return "\(show) and type the label on Right-click me: it gets a left click, the pointer stays on it and the labels come back. \(rightClickThere)"
             }
             let again = hints.map { "Press \($0) again" } ?? "Show the labels again"
-            return "\(show) and type the label on Right-click me — the pointer is now on it. \(again) and then \(rightClick): it right-clicks where the pointer is. Then press \(escape) to hide the labels."
+            return "\(show) and type the label on Right-click me: it gets a left click, and the pointer is now on it. \(again) and then \(rightClick): it right-clicks where the pointer is. Then press \(escape) to hide the labels."
         case .search:
-            let search = keys.shortcut(.search).map { "Press \($0)" } ?? "\(show), then \(keys.hintsKey("action search_hints", or: "/"))"
+            let shortcut = keys.shortcut(.search)
+            let search = shortcut.map { "Press \($0)" } ?? "\(show), then \(keys.hintsKey("action search_hints", or: "/"))"
             // Return with one match: clicks it with Automatic click, else only moves the pointer there.
-            let afterReturn = keys.launchers.autoClick ? afterClick
-                : " The pointer moves to Rocket; press \(leftClick) to click it, then \(escape) to hide the labels."
+            let afterReturn = !keys.launchers.autoClick
+                ? " The pointer moves to Rocket; press \(leftClick) to click it, then \(escape) to hide the labels."
+                // A chained search launcher reopens with its search, and only Escape cancels a search.
+                : shortcut != nil && keys.launchers.chain
+                ? " The labels and the search come back after the click; press Escape to close the search, then \(escape) to hide the labels."
+                : afterClick
             return "\(search), type rocket and press Return.\(afterReturn)"
         case .scroll:
             let start = keys.shortcut(mode: "scroll").map { "Put the pointer over the list and press \($0)." }
-                ?? keys.missing("Scroll mode has", page: "Scrolling", menuBar: false)
+                ?? "\(keys.missing("Scroll mode has", page: "Scrolling", menuBar: false)) It scrolls what is under the pointer: keep it over the list."
             // Inverted scrolling flips every direction, the jumps included.
             let (down, up, top, bottom) = keys.inverted ? ("up", "down", "bottom", "top") : ("down", "up", "top", "bottom")
             func key(_ action: String, _ fallback: String) -> String { keys.scrollKey("action \(action)", or: fallback) }
@@ -338,11 +391,13 @@ extension Neru {
                 + "\(key("go_\(top)", "gg")) goes to the top and \(key("go_\(bottom)", "Shift+G")) to the bottom. "
                 + "\(keys.scrollKey("idle", or: "Escape")) stops."
         case .grid:
-            let pick = "the letters of the cell with the dot, then the letter of the small square on the dot."
+            let pick = "the letters of the cell with the dot, then the key of the small square on it"
             let start = keys.shortcut(mode: "grid").map { "Press \($0), type \(pick)" }
                 ?? "\(keys.missing("The grid has", page: "Grid", menuBar: true)) Type \(pick)"
-            // Picking a square only moves the pointer; the grid stays up until Escape.
-            return "\(start) Press \(keys.gridKey("action left_click", or: "Shift+L")) to click, then \(keys.gridKey("idle", or: "Escape")) to close the grid."
+            // A grid with an action clicks as it picks; otherwise the pick only
+            // sets the point, and the grid stays up until Escape.
+            if keys.gridClicks { return "\(start): it clicks there." }
+            return "\(start). Press \(keys.gridKey("action left_click", or: "Shift+L")) to click, then \(keys.gridKey("idle", or: "Escape")) to close the grid."
         case .chain:
             let without = hints.map { "without pressing \($0) again" } ?? "without showing the labels again"
             let text = "With Chain clicks on, labels come back after every click until you press \(escape). Turn it on, then click 1, 2 and 3 \(without)."
@@ -351,16 +406,16 @@ extension Neru {
         }
     }
 
-    /// The finished screen's reminder of each shortcut.
-    static func tutorialSummary(in dump: [String: Any]) -> [(what: String, keys: String)] {
+    /// The finished screen's reminder of each shortcut: the keys to press in
+    /// turn, none when it has no shortcut.
+    static func tutorialSummary(in dump: [String: Any]) -> [(what: String, keys: [String])] {
         let keys = PracticeKeys(dump)
         let hints = keys.shortcut(.main)
-        let none = "No shortcut"
         return [
-            ("Show labels", hints ?? none),
-            ("Search", keys.shortcut(.search) ?? hints.map { "\($0), then \(keys.hintsKey("action search_hints", or: "/"))" } ?? none),
-            ("Scroll", keys.shortcut(mode: "scroll") ?? none),
-            ("Grid", keys.shortcut(mode: "grid") ?? none),
+            ("Show labels", hints.map { [$0] } ?? []),
+            ("Search", keys.shortcut(.search).map { [$0] } ?? hints.map { [$0, keys.hintsKey("action search_hints", or: "/")] } ?? []),
+            ("Scroll mode", keys.shortcut(mode: "scroll").map { [$0] } ?? []),
+            ("Grid", keys.shortcut(mode: "grid").map { [$0] } ?? []),
         ]
     }
 
@@ -368,23 +423,30 @@ extension Neru {
     /// instructions name, so the mode behaves just as that shortcut's would.
     static func tutorialCommand(_ step: TutorialStep, in dump: [String: Any]) -> [String] {
         let keys = PracticeKeys(dump)
+        let combos = keys.launchers.combos
         let role: LauncherRole = switch step {
-        case .rightClick where keys.launchers.combos[.rightClick] != nil: .rightClick
-        case .search where keys.launchers.combos[.search] != nil: .search
+        case .rightClick where combos[.rightClick] != nil: .rightClick
+        case .search where combos[.search] != nil: .search
         default: .main
         }
-        let command = switch step {
-        case .scroll: "scroll"
-        case .grid: "grid"
-        default: keys.launchers.combos[role].flatMap { keys.bindings[$0]?.first } ?? "hints"
+        // No labels shortcut: the search one without its search clicks as the text says.
+        let searchless = combos[.search].flatMap { keys.bindings[$0]?.first }.map {
+            $0.split(whereSeparator: \.isWhitespace).filter { !["--search", "-s", "--hide-on-empty-search"].contains($0) }.joined(separator: " ")
         }
-        return command.split(separator: " ").map(String.init)
+        let command = switch step {
+        case .scroll: keys.binding(mode: "scroll")?.command ?? "scroll"
+        case .grid: keys.binding(mode: "grid")?.command ?? "grid"
+        default: combos[role].flatMap { keys.bindings[$0]?.first } ?? searchless ?? "hints"
+        }
+        return command.split(whereSeparator: \.isWhitespace).map(String.init)
     }
 }
 
 /// The shortcuts and in-mode keys the tutorial names, read from a config dump.
 struct PracticeKeys {
     let bindings: [String: [String]]
+    /// Read leniently: a launcher with flags the Clicking page leaves alone
+    /// still has a shortcut, and its --action and --repeat still count.
     let launchers: Neru.Launchers
     let hints: [String: [String]]
     let scroll: [String: [String]]
@@ -392,21 +454,35 @@ struct PracticeKeys {
     let inverted: Bool
     let menuBar: Bool
 
-    init(_ dump: [String: Any]) {
+    /// `inverted` is the daemon's own scroll direction (`status --json`),
+    /// which the menu bar flips without touching the config; nil reads the config.
+    init(_ dump: [String: Any], inverted: Bool? = nil) {
         bindings = Neru.hotkeyBindings(in: dump)
-        launchers = Neru.launchers(in: bindings)
+        launchers = Neru.launchers(in: bindings, lenient: true)
         hints = Neru.hotkeys("hints", in: dump)
         scroll = Neru.hotkeys("scroll", in: dump)
         grid = Neru.hotkeys("grid", in: dump)
-        inverted = Neru.value("scroll.invert_scroll", in: dump) as? Bool ?? false
+        self.inverted = inverted ?? Neru.value("scroll.invert_scroll", in: dump) as? Bool ?? false
         menuBar = Neru.value("systray.enabled", in: dump) as? Bool ?? true
     }
 
     /// A launcher's shortcut as the window shows it ("⌘⇧Space"), or nil.
     func shortcut(_ role: Neru.LauncherRole) -> String? { launchers.combos[role].map(Shortcut.display) }
 
-    /// The shortcut bound to just `mode`, or nil.
-    func shortcut(mode: String) -> String? { bindings.filter { $0.value == [mode] }.keys.min().map(Shortcut.display) }
+    /// The shortcut that starts `mode`, or nil: the one bound to just `mode`,
+    /// as Settings shows it, else the first `mode …` command with flags.
+    func binding(mode: String) -> (combo: String, command: String)? {
+        let bound = bindings.filter { $0.value.count == 1 && $0.value[0].split(whereSeparator: \.isWhitespace).first.map(String.init) == mode }
+        guard let combo = bound.filter({ $0.value == [mode] }).keys.min() ?? bound.keys.min() else { return nil }
+        return (combo, bound[combo]![0])
+    }
+
+    func shortcut(mode: String) -> String? { binding(mode: mode).map { Shortcut.display($0.combo) } }
+
+    /// The grid shortcut left-clicks as it picks (`grid --action left_click`).
+    var gridClicks: Bool {
+        binding(mode: "grid").flatMap { Neru.parseLauncher([$0.command], mode: "grid", lenient: true) }?.action == "left_click"
+    }
 
     func hintsKey(_ steps: String, or fallback: String) -> String { Self.key(steps, in: hints, or: fallback) }
     func scrollKey(_ steps: String, or fallback: String) -> String { Self.key(steps, in: scroll, or: fallback) }
