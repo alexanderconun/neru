@@ -7,8 +7,6 @@ import SwiftUI
 struct TutorialView: View {
     @EnvironmentObject var neru: Neru
     @Environment(\.controlActiveState) private var activeState
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.dismissWindow) private var dismissWindow
     @State private var progress: TutorialProgress
     @State private var listAnchor = AnchorView()
     @State private var listOffset: CGFloat?
@@ -187,8 +185,8 @@ struct TutorialView: View {
             Spacer()
             HStack {
                 Spacer()
-                Button("Open Training") { openWindow(id: "training") }
-                Button("Done") { dismissWindow(id: "tutorial") }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                Button("Open Training") { Windows.show("training") }
+                Button("Done") { Windows.close("tutorial") }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
             }
         }
     }

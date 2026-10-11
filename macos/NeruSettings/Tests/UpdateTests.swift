@@ -8,15 +8,6 @@ func runUpdateTests() {
         assert(!UpdateChecker.isRelease(tag), tag)
     }
 
-    // The app's NeruBuildID wins; otherwise the tag from `neru --version`.
-    let cli = "Neru version v1.2.3\nGit commit: abc\nBuild date: today"
-    assert(UpdateChecker.installedVersion(buildID: "v1.2.4-hk.1", cliVersion: cli) == "v1.2.4-hk.1")
-    assert(UpdateChecker.installedVersion(buildID: nil, cliVersion: cli) == "v1.2.3")
-    assert(UpdateChecker.installedVersion(buildID: "", cliVersion: cli) == "v1.2.3")
-    assert(UpdateChecker.installedVersion(buildID: nil, cliVersion: "") == "")
-    // An error from a missing binary is not a version.
-    assert(UpdateChecker.installedVersion(buildID: nil, cliVersion: "Could not find the neru binary") == "")
-
     // A trimmed /releases/latest payload.
     let release = Data("""
     {"url": "https://api.github.com/repos/alexanderconun/neru/releases/1", "tag_name": "v1.58.0-hk.1",

@@ -1,122 +1,62 @@
 import AppKit
-import SwiftUI
 
-@main
-struct NeruSettingsApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var neru = Neru()
+// The windows' way into the daemon they run in: the C functions in
+// internal/adapter/settingsui/settingsui.h. The only file that touches Go, so
+// bin/check-settings and bin/render-settings build without it.
 
-    init() { Render.run(CommandLine.arguments) }
-
-    // The daemon's menu items open each window by its homekey-settings://<id>
-    // URL, whether or not this app runs, without opening the others. URLs are
-    // matched whole: SwiftUI matches by substring, and every one says "settings".
-    var body: some Scene {
-        Window("\(Neru.appName) Settings", id: "settings") {
-            ContentView()
-                .environmentObject(neru)
-                .frame(minWidth: 720, minHeight: 520)
-        }
-        .windowResizability(.contentMinSize)
-        .handlesExternalEvents(matching: ["homekey-settings://settings"])
-        Window("\(Neru.appName) Tutorial", id: "tutorial") {
-            TutorialView().environmentObject(neru)
-        }
-        .windowResizability(.contentSize)
-        .handlesExternalEvents(matching: ["homekey-settings://tutorial"])
-        Window("\(Neru.appName) Training", id: "training") {
-            TrainingView().environmentObject(neru)
-        }
-        .windowResizability(.contentSize)
-        .handlesExternalEvents(matching: ["homekey-settings://training"])
-    }
-}
-
-/// Quits with the last window, as a single Window scene does by itself.
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
-}
-
-enum Page: String, CaseIterable, Identifiable {
-    case general = "General", clicking = "Clicking", scrolling = "Scrolling", grid = "Grid"
-    case perApp = "Per-App", ignored = "Ignored Apps", about = "About"
-    var id: Self { self }
-
-    var icon: String {
-        switch self {
-        case .general: "gearshape"
-        case .clicking: "cursorarrow.click"
-        case .scrolling: "scroll"
-        case .grid: "square.grid.3x3"
-        case .perApp: "macwindow.on.rectangle"
-        case .ignored: "eye.slash"
-        case .about: "info.circle"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .general, .ignored, .about: .gray
-        case .clicking, .scrolling: .blue
-        case .grid: .purple
-        case .perApp: .orange
+/// Shows "settings", "tutorial" or "training". Go calls it from any thread.
+@_cdecl("HomekeySettingsOpen")
+public func homekeySettingsOpen(_ window: UnsafeMutablePointer<CChar>) {
+    let name = String(cString: window) // copied: Go frees it when this returns
+    DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+            if Neru.link == nil { Neru.link = InProcessDaemon() }
+            Windows.show(name)
         }
     }
 }
 
-struct ContentView: View {
-    @EnvironmentObject var neru: Neru
-    @State private var page: Page = .general
+final class InProcessDaemon: DaemonLink {
+    /// HomekeyWatch and HomekeyWatchStop run here, in order.
+    private let watchQueue = DispatchQueue(label: "neru.settings.watch")
 
-    var body: some View {
-        NavigationSplitView {
-            List(Page.allCases, selection: $page) { page in
-                Label {
-                    Text(page.rawValue)
-                } icon: {
-                    Image(systemName: page.icon)
-                        .foregroundStyle(.white)
-                        .frame(width: 22, height: 22)
-                        .background(page.color.gradient, in: RoundedRectangle(cornerRadius: 6))
-                }
-                .padding(.vertical, 2)
-            }
-            .navigationSplitViewColumnWidth(200)
-        } detail: {
-            VStack(spacing: 0) {
-                if neru.binary == nil {
-                    Banner(text: "Could not find \(Neru.appName). Install it in Applications, or set NERU_BIN.")
-                } else if neru.needsAccessibility {
-                    Banner(text: "\(Neru.appName) needs Accessibility permission. Turn \(Neru.appName) on in System Settings; it starts on its own once you do.",
-                           action: ("Open System Settings", { NSWorkspace.shared.open(Neru.accessibilitySettingsURL) }))
-                } else if !neru.running {
-                    Banner(text: neru.notRunningReason, action: ("Start \(Neru.appName)", neru.start))
-                }
-                if let error = neru.error {
-                    Banner(text: error, action: ("Dismiss", { neru.error = nil }))
-                }
-                // Only the page: the banners' buttons are for exactly this state.
-                Group {
-                    switch page {
-                    case .general: GeneralPage()
-                    case .clicking: ClickingPage()
-                    case .scrolling: ScrollingPage()
-                    case .grid: GridPage()
-                    case .perApp: PerAppPage()
-                    case .ignored: IgnoredAppsPage()
-                    case .about: AboutPage()
-                    }
-                }
-                .disabled(!neru.running && page != .about)
-            }
-            .navigationTitle(page.rawValue)
+    func send(_ action: String, _ args: [String]) -> (ok: Bool, out: String) {
+        // The daemon may wait on the main thread (overlays, the event tap)
+        // while holding what this request needs: a deadlock from main.
+        dispatchPrecondition(condition: .notOnQueue(.main))
+        guard let request = try? JSONSerialization.data(withJSONObject: ["action": action, "args": args]),
+              let reply = String(decoding: request, as: UTF8.self).withCString({ HomekeyCommand(UnsafeMutablePointer(mutating: $0)) })
+        else { return (false, "Could not ask \(Neru.appName)") }
+        defer { free(reply) }
+        let json = Neru.json(String(cString: reply)) ?? [:]
+        guard json["success"] as? Bool == true else { return (false, json["message"] as? String ?? "No answer") }
+        switch json["data"] {
+        case nil: return (true, "")
+        case let text as String: return (true, text)
+        case let data?:
+            let out = try? JSONSerialization.data(withJSONObject: data, options: .fragmentsAllowed)
+            return (true, out.map { String(decoding: $0, as: UTF8.self) } ?? "")
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            neru.refresh()
+    }
+
+    func watch(_ line: @escaping (String?) -> Void) -> () -> Void {
+        let owner = Unmanaged.passRetained(LineBox(line)).toOpaque() // released after the nil line
+        var handle: UInt = 0
+        watchQueue.async {
+            handle = HomekeyWatch({ owner, cLine in
+                let box = Unmanaged<LineBox>.fromOpaque(owner!)
+                let text = cLine.map { String(cString: $0) } // copied: Go frees it
+                DispatchQueue.main.async {
+                    box.takeUnretainedValue().line(text)
+                    if text == nil { box.release() }
+                }
+            }, owner)
         }
-        // While the daemon waits for permission, notice the moment it is granted.
-        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
-            if neru.needsAccessibility { neru.refresh() }
-        }
+        return { self.watchQueue.async { HomekeyWatchStop(handle) } }
+    }
+
+    private final class LineBox {
+        let line: (String?) -> Void
+        init(_ line: @escaping (String?) -> Void) { self.line = line }
     }
 }

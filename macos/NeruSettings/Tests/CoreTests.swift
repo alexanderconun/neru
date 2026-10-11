@@ -96,15 +96,6 @@ func runCoreTests() {
     // tomlString escapes quotes and backslashes.
     assert(Neru.tomlString("a\"b\\c") == "\"a\\\"b\\\\c\"")
 
-    // Waiting for permission only on the daemon's own code: a daemon with no
-    // socket may be at its invalid-config alert instead.
-    assert(Neru.isWaitingForAccessibility(dumpOK: false, output: "x (code: ERR_ACCESSIBILITY_DENIED)"))
-    assert(!Neru.isWaitingForAccessibility(dumpOK: false, output: "[IPC_SERVER_NOT_RUNNING] neru is not running"))
-    assert(!Neru.isWaitingForAccessibility(dumpOK: true, output: ""))
-    assert(Neru.notRunningReason("[IPC_SERVER_NOT_RUNNING] neru is not running. Start it first") == "Homekey isn't running.")
-    assert(Neru.notRunningReason("version mismatch (code: ERR_VERSION_MISMATCH)").hasPrefix("Another version of Homekey"))
-    assert(Neru.notRunningReason("boom") == "Can't reach Homekey: boom")
-
     // Recorded chords: Shift alone is typing, so only the F-keys may take it.
     func key(_ code: UInt16, _ chars: String, _ flags: NSEvent.ModifierFlags) -> NSEvent {
         NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0, context: nil,

@@ -118,20 +118,11 @@ struct PracticeCard<Content: View>: View {
     }
 }
 
-/// The Settings window's banners, for a practice window: it does nothing
-/// while the daemon is down.
+/// The Settings window's error banner, for a practice window.
 struct PracticeBanners: View {
     @EnvironmentObject var neru: Neru
 
     var body: some View {
-        if neru.needsAccessibility {
-            Banner(text: "\(Neru.appName) needs Accessibility permission. Turn \(Neru.appName) on in System Settings; it starts on its own once you do.",
-                   action: ("Open System Settings", { NSWorkspace.shared.open(Neru.accessibilitySettingsURL) }))
-        } else if !neru.running, neru.binary == nil {
-            Banner(text: "Could not find \(Neru.appName). Install it in Applications, or set NERU_BIN.")
-        } else if !neru.running {
-            Banner(text: neru.notRunningReason, action: ("Start \(Neru.appName)", neru.start))
-        }
         if let error = neru.error {
             Banner(text: error, action: ("Dismiss", { neru.error = nil }))
         }
@@ -139,24 +130,25 @@ struct PracticeBanners: View {
 }
 
 extension Neru {
-    /// Follows `neru watch` while a practice window is open: each window
-    /// counts itself in and out, and the last one out stops it. A watch that
-    /// ends (the daemon quit, or is not up yet) is retried every 2 s.
+    /// Follows the daemon's watch stream while a practice window is open:
+    /// each window counts itself in and out, and the last one out stops it.
+    /// A stream that ends by itself (the daemon is shutting down) is retried
+    /// every 2 s.
     func watchModes(_ open: Bool) {
         watchers = max(watchers + (open ? 1 : -1), 0)
         if watchers > 0 {
             startWatch()
         } else {
-            watcher?.terminate()
-            watcher = nil
+            endWatch()
         }
     }
 
     /// Starts the mode a tutorial step practises, as its shortcut would.
     func runMode(_ args: [String]) {
+        guard let action = args.first else { return }
         error = nil
         queue.async {
-            let result = self.run(args)
+            let result = self.send(action, Array(args.dropFirst()))
             if !result.ok { DispatchQueue.main.async { self.error = result.out } }
         }
     }
@@ -164,50 +156,33 @@ extension Neru {
     /// Reads the scroll direction the daemon uses now into scrollInverted.
     func readScrollInverted() {
         queue.async {
-            let inverted = Self.json(self.run(["status", "--json"]).out)?["scroll_inverted"] as? Bool
+            let inverted = Self.json(self.send("status").out)?["scroll_inverted"] as? Bool
             DispatchQueue.main.async { self.scrollInverted = inverted }
         }
     }
 
     private func startWatch() {
-        guard watchers > 0, watcher == nil else { return }
-        guard let binary else { return retryWatch() }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: binary)
-        process.arguments = ["watch"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        var pending = Data()
-        pipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty else { handle.readabilityHandler = nil; return }
-            pending.append(data)
-            while let end = pending.firstIndex(of: UInt8(ascii: "\n")) {
-                let event = Self.json(String(decoding: pending[..<end], as: UTF8.self))
-                pending.removeSubrange(...end)
-                if let event { DispatchQueue.main.async { self.handleWatchEvent(event) } }
-            }
-        }
-        process.terminationHandler = { _ in
-            DispatchQueue.main.async {
-                guard self.watcher === process else { return } // stopped on purpose
-                self.watcher = nil
+        guard watchers > 0, stopWatch == nil, let link = Self.link else { return }
+        watchID += 1
+        let id = watchID
+        stopWatch = link.watch { line in
+            guard self.watchID == id else { return } // stopped on purpose
+            guard let line else {
+                self.endWatch()
                 self.modeEvents.send((mode: "idle", entered: true))
-                if self.running { self.refresh() } // the daemon went away
-                self.retryWatch()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.startWatch() }
+                return
             }
-        }
-        do {
-            try process.run()
-            watcher = process
-        } catch {
-            retryWatch()
+            if let event = Self.json(line) { self.handleWatchEvent(event) }
         }
     }
 
-    private func retryWatch() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.startWatch() }
+    /// Stops the watch, whose own end calls this too: the stop function
+    /// frees the stream either way, and must run once.
+    private func endWatch() {
+        watchID += 1
+        stopWatch?()
+        stopWatch = nil
     }
 
     private func handleWatchEvent(_ event: [String: Any]) {
@@ -215,7 +190,6 @@ extension Neru {
         case "snapshot":
             // The first line, and the state after missed events: the mode as it is now.
             modeEvents.send((mode: (event["status"] as? [String: Any])?["mode"] as? String ?? "idle", entered: true))
-            if !running { refresh() } // the daemon came (back) up, maybe on another config
         case "mode_enter":
             modeEvents.send((mode: event["mode"] as? String ?? "", entered: true))
         case "mode_exit":

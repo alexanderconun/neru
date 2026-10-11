@@ -1,18 +1,22 @@
 import AppKit
 import SwiftUI
 
-/// `HomekeySettings --render <dir> [dump.json]` draws the Tutorial (every
-/// step and the finished screen) and Training (each round before Start and
-/// mid-round) offscreen, light and dark, into <dir> as PNGs, then exits. For
-/// checking the layout without screen recording. It never runs the CLI and
-/// never writes UserDefaults; `dump.json`, a saved `neru config dump`,
-/// stands in for the daemon's config (the default shortcuts without one).
+/// `render-settings <dir> [dump.json]` (`just render-settings`) draws every
+/// Settings page, the Tutorial (every step and the finished screen) and
+/// Training (each round before Start and mid-round) offscreen, light and dark,
+/// into <dir> as PNGs. For checking the layout without screen recording or a
+/// daemon. It never asks a daemon and never writes UserDefaults; `dump.json`,
+/// a saved `neru config dump`, stands in for the daemon's config (the default
+/// shortcuts without one).
 enum Render {
     static func run(_ arguments: [String]) {
-        guard let flag = arguments.firstIndex(of: "--render"), arguments.count > flag + 1 else { return }
-        let dir = URL(fileURLWithPath: arguments[flag + 1])
-        let dump = arguments.count > flag + 2
-            ? (try? String(contentsOfFile: arguments[flag + 2], encoding: .utf8)).flatMap(Neru.json) : nil
+        guard arguments.count > 1 else {
+            FileHandle.standardError.write(Data("usage: render-settings <dir> [dump.json]\n".utf8))
+            exit(2)
+        }
+        let dir = URL(fileURLWithPath: arguments[1])
+        let dump = arguments.count > 2
+            ? (try? String(contentsOfFile: arguments[2], encoding: .utf8)).flatMap(Neru.json) : nil
         NSApplication.shared.setActivationPolicy(.prohibited)
         let neru = Neru(config: dump ?? ["hotkeys": ["bindings": Neru.defaultHotkeys.mapValues { [$0] }],
                                          "scroll": ["hotkeys": Neru.defaultScrollHotkeys.mapValues { [$0] }]])
@@ -22,6 +26,9 @@ enum Render {
             func draw(_ name: String, _ view: some View) {
                 let url = dir.appendingPathComponent("\(name)-\(scheme).png")
                 snapshot(view.environmentObject(neru), appearance: appearance, to: url)
+            }
+            for page in Page.allCases {
+                draw("settings-\(page)", ContentView(page: page).frame(width: 720, height: 520))
             }
             for step in TutorialStep.allCases {
                 var progress = TutorialProgress()
@@ -77,3 +84,5 @@ enum Render {
         try? bitmap.representation(using: .png, properties: [:])?.write(to: url)
     }
 }
+
+Render.run(CommandLine.arguments)

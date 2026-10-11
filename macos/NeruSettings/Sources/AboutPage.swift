@@ -7,7 +7,7 @@ struct AboutPage: View {
     @AppStorage(UpdateChecker.autoCheckKey) private var autoCheck = false
 
     var body: some View {
-        let installed = UpdateChecker.installedVersion(cliVersion: neru.version)
+        let installed = neru.version // the daemon's, which is the app's NeruBuildID
         VStack(spacing: 14) {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()

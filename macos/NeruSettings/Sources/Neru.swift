@@ -2,34 +2,36 @@ import AppKit
 import Carbon
 import Combine
 
-/// Talks to the running daemon through the `neru` CLI: `config dump` to read,
-/// `config set` to write (persisted to config.override.toml by the daemon).
-/// Tables (hotkeys, per-app settings) are the exception — `config set` cannot
-/// write them, so they are edited in config.toml directly (ConfigText.swift).
+/// The daemon's side of the windows. They run inside it (App.swift) and reach
+/// it through `link`, with the requests `neru` would send over its socket:
+/// `config` to read, `config-set` to write (persisted to config.override.toml
+/// by the daemon). Tables (hotkeys, per-app settings) are the exception —
+/// `config-set` cannot write them, so they are edited in config.toml directly
+/// (ConfigText.swift).
 ///
 /// Feature files extend this class; they reach the daemon only through
-/// `set`/`setMany`, `editConfigText` and `background`.
+/// `set`/`setMany`, `editConfigText`, `send` on `queue` and `background`.
 final class Neru: ObservableObject {
     @Published var config: [String: Any] = [:]
-    @Published var running = false
-    @Published var notRunningReason = ""
-    /// The daemon is up but stuck at its Accessibility permission prompt.
-    @Published var needsAccessibility = false
     @Published var launchAtLogin = false
     @Published var version = ""
     @Published var error: String?
 
-    /// Each mode_enter (`entered`) and mode_exit from `neru watch`, while a
-    /// practice window keeps it running (Practice.swift).
+    /// Each mode_enter (`entered`) and mode_exit from the watch stream, while
+    /// a practice window keeps it running (Practice.swift).
     let modeEvents = PassthroughSubject<(mode: String, entered: Bool), Never>()
-    var watcher: Process?
+    var stopWatch: (() -> Void)?
+    var watchID = 0
     var watchers = 0
-    /// Whether the daemon scrolls inverted now, from `status --json`; the
-    /// menu bar flips it without a config change. nil until read.
+    /// Whether the daemon scrolls inverted now, from `status`; the menu bar
+    /// flips it without a config change. nil until read.
     @Published var scrollInverted: Bool?
 
-    private(set) var binary: String?
     private(set) var configPath = ""
+
+    /// The daemon in this process; nil where there is none (check-settings,
+    /// render-settings), and then every request fails.
+    static var link: DaemonLink?
 
     /// The display name shown everywhere the app names itself.
     static let appName = "Homekey"
@@ -44,68 +46,31 @@ final class Neru: ObservableObject {
         "Primary+Shift+S": "scroll",
     ]
 
-    init() {
-        refresh()
-        // A watch outlives this app otherwise, until the daemon next has an event.
-        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in
-            self.watcher?.terminate()
-        }
-    }
+    init() {}
 
-    /// Shows `config` and never runs the CLI: for rendering the windows offscreen.
+    /// Shows `config` and never asks the daemon: for rendering the windows offscreen.
     init(config: [String: Any]) {
         self.config = config
-        running = true
     }
 
-    /// Prefers the first binary the running daemon accepts: a CLI of another
-    /// version is refused with ERR_VERSION_MISMATCH.
-    static func findBinary() -> String? {
-        let home = NSHomeDirectory()
-        let parent = Bundle.main.bundleURL.deletingLastPathComponent()
-        var candidates = [
-            parent.deletingLastPathComponent().appendingPathComponent("MacOS/neru").path, // Neru.app/Contents/Helpers
-            parent.appendingPathComponent("neru").path, // next to a dev build
-        ]
-        if let env = ProcessInfo.processInfo.environment["NERU_BIN"] { candidates.insert(env, at: 0) }
-        candidates += [
-            "/Applications/Homekey.app/Contents/MacOS/neru", "/Applications/Neru.app/Contents/MacOS/neru", "/opt/homebrew/bin/neru", "/usr/local/bin/neru", "\(home)/.local/bin/neru",
-            "\(home)/go/bin/neru", "\(home)/.nix-profile/bin/neru", "/run/current-system/sw/bin/neru",
-        ]
-        let found = candidates.filter { FileManager.default.isExecutableFile(atPath: $0) }
-        return found.first { run($0, ["status"]).ok } ?? found.first
-    }
-
+    /// One request, as docs/reference/ipc.md describes it: the reply's data
+    /// as JSON (a string as is), or the daemon's error. It blocks: call it on `queue`.
     @discardableResult
-    func run(_ args: [String]) -> (ok: Bool, out: String) {
-        guard let binary else { return (false, "Could not find the neru binary") }
-        return Self.run(binary, args)
+    func send(_ action: String, _ args: [String] = []) -> (ok: Bool, out: String) {
+        Self.link?.send(action, args) ?? (false, "No \(Self.appName) daemon here")
     }
 
-    static func run(_ binary: String, _ args: [String]) -> (ok: Bool, out: String) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: binary)
-        process.arguments = args
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        do { try process.run() } catch { return (false, error.localizedDescription) }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        let out = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        return (process.terminationStatus == 0, out)
-    }
-
-    /// Every CLI call runs here, off the main thread and in order, so the
-    /// window never waits on a process.
-    let queue = DispatchQueue(label: "neru.settings.cli")
+    /// Every request runs here, off the main thread and in order, so the
+    /// window never waits on the daemon and the daemon never waits on a main
+    /// thread that waits on it.
+    let queue = DispatchQueue(label: "neru.settings.daemon")
 
     /// Runs `work` in the background, then reloads the config on the main thread.
     /// `work` returns an error message, or nil.
     func background(_ work: @escaping () -> String?) {
         queue.async {
             let failure = work()
-            let dump = self.run(["config", "dump"])
+            let dump = self.send("config")
             DispatchQueue.main.async {
                 if let failure { self.error = failure }
                 self.apply(dump)
@@ -115,12 +80,10 @@ final class Neru: ObservableObject {
 
     func refresh() {
         queue.async {
-            let binary = Self.findBinary()
-            self.binary = binary
-            let version = self.run(["--version"]).out
-            let login = self.run(["services", "status"]).out == "Service loaded"
-            let path = Self.json(self.run(["status", "--json"]).out)?["config"] as? String
-            let dump = self.run(["config", "dump"])
+            let version = self.send("version").out
+            let login = self.send("login-item", ["status"]).out == "true"
+            let path = Self.json(self.send("status").out)?["config"] as? String
+            let dump = self.send("config")
             DispatchQueue.main.async {
                 self.version = version
                 self.launchAtLogin = login
@@ -132,48 +95,12 @@ final class Neru: ObservableObject {
     }
 
     private func apply(_ dump: (ok: Bool, out: String)) {
-        running = dump.ok
-        notRunningReason = dump.ok ? "" : Self.notRunningReason(dump.out)
-        needsAccessibility = Self.isWaitingForAccessibility(dumpOK: dump.ok, output: dump.out)
-        if dump.ok { config = Self.json(dump.out) ?? [:] }
+        if dump.ok { config = Self.json(dump.out) ?? [:] } else { error = dump.out }
     }
 
-    /// A daemon blocked at its permission prompt answers every command with
-    /// ERR_ACCESSIBILITY_DENIED. A live daemon with no socket is at another
-    /// alert (an invalid config, onboarding), which says so itself.
-    static func isWaitingForAccessibility(dumpOK: Bool, output: String) -> Bool {
-        !dumpOK && output.contains("ERR_ACCESSIBILITY_DENIED")
-    }
-
-    /// Why the window can't reach the daemon, in words for the cases a user
-    /// can act on; anything else as the CLI said it.
-    static func notRunningReason(_ output: String) -> String {
-        if output.contains("IPC_SERVER_NOT_RUNNING") { return "\(appName) isn't running." }
-        // Another build answers on the same socket and refuses this one's CLI.
-        if output.contains("VERSION_MISMATCH") {
-            return "Another version of \(appName) is running. Quit it from its menu bar icon, then start this one."
-        }
-        return "Can't reach \(appName): \(output)"
-    }
-
-    static let accessibilitySettingsURL =
-        URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
-
-    /// Starts the daemon. A bundled daemon is opened through LaunchServices so
-    /// macOS asks for permission on behalf of the app, not of this window.
-    func start() {
-        guard let binary else { return }
-        let bundle = URL(fileURLWithPath: binary).deletingLastPathComponent() // Contents/MacOS
-            .deletingLastPathComponent().deletingLastPathComponent()
-        if bundle.pathExtension == "app" {
-            NSWorkspace.shared.openApplication(at: bundle, configuration: .init())
-        } else {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: binary)
-            process.arguments = ["launch"]
-            try? process.run()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.refresh() }
+    /// Exits the open mode, if any: a window opening is not a click for it.
+    func exitMode() {
+        queue.async { self.send("idle") }
     }
 
     // MARK: reading
@@ -220,35 +147,33 @@ final class Neru: ObservableObject {
     }
 
     /// Sets several fields; more than one is applied with a single reload.
-    /// "--" keeps a value starting with "-" ("-1", keys "-=[]") from being read as a flag.
     func setMany(_ pairs: [(String, String)], local: [(String, Any)]? = nil) {
         for (key, value) in local ?? pairs.map({ ($0.0, $0.1 as Any) }) { setLocal(key, value) }
         error = nil
         background {
             if pairs.count == 1 {
-                let result = self.run(["config", "set", "--", pairs[0].0, pairs[0].1])
+                let result = self.send("config-set", [pairs[0].0, pairs[0].1])
                 return result.ok ? nil : result.out
             }
             for (key, value) in pairs {
-                let result = self.run(["config", "set", "--no-reload", "--", key, value])
+                let result = self.send("config-set", [key, value, "--no-reload"])
                 if !result.ok { return result.out }
             }
-            let result = self.run(["config", "reload"])
+            let result = self.send("reload")
             return result.ok ? nil : result.out
         }
     }
 
+    /// Installs or removes the login item. The daemon never boots its own
+    /// launchd job out from here (cli.LoginItem), so nothing restarts.
     func setLaunchAtLogin(_ on: Bool) {
         launchAtLogin = on
-        // Uninstalling boots the login agent out, which quits a daemon it started.
-        let restart = !on && running
         queue.async {
-            let result = self.run(["services", on ? "install" : "uninstall"])
-            let login = self.run(["services", "status"]).out == "Service loaded"
+            let result = self.send("login-item", [on ? "install" : "uninstall"])
+            let login = self.send("login-item", ["status"]).out == "true"
             DispatchQueue.main.async {
                 if !result.ok { self.error = result.out }
                 self.launchAtLogin = login
-                if restart { self.start() }
             }
         }
     }
@@ -285,12 +210,12 @@ final class Neru: ObservableObject {
             if paused {
                 self.pauseDepth += 1
                 guard self.pauseDepth == 1 else { return }
-                self.pausedForRecording = Self.json(self.run(["status", "--json"]).out)?["enabled"] as? Bool ?? false
-                if self.pausedForRecording { self.run(["stop"]) }
+                self.pausedForRecording = Self.json(self.send("status").out)?["enabled"] as? Bool ?? false
+                if self.pausedForRecording { self.send("stop") }
             } else if self.pauseDepth > 0 {
                 self.pauseDepth -= 1
                 if self.pauseDepth == 0, self.pausedForRecording {
-                    self.run(["start"])
+                    self.send("start")
                     self.pausedForRecording = false
                 }
             }
@@ -343,4 +268,13 @@ final class Neru: ObservableObject {
             return (id, prop(source, kTISPropertyLocalizedName) ?? id)
         }.sorted { $0.name < $1.name }
     }
+}
+
+/// The daemon a window talks to: App.swift's in-process one in the app build.
+protocol DaemonLink {
+    /// One request; see Neru.send. Never on the main thread.
+    func send(_ action: String, _ args: [String]) -> (ok: Bool, out: String)
+    /// Streams `neru watch` lines to `line` on the main queue, then nil once
+    /// when the stream ends. Returns the stop function, to call once.
+    func watch(_ line: @escaping (String?) -> Void) -> () -> Void
 }

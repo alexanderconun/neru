@@ -27,9 +27,9 @@ extension Neru {
         let target = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
         error = nil
         background {
-            let reload = self.run(["config", "reload"])
+            let reload = self.send("reload")
             guard reload.ok else { return reload.out }
-            let dump = self.run(["config", "dump"])
+            let dump = self.send("config")
             guard dump.ok, let fresh = Self.json(dump.out) else { return dump.out }
             let text: String
             do { text = try String(contentsOfFile: target, encoding: .utf8) } catch {
@@ -45,13 +45,14 @@ extension Neru {
             } catch {
                 return error.localizedDescription
             }
-            let result = self.run(["config", "reload"])
+            let result = self.send("reload")
             return result.ok ? nil : result.out
         }
     }
 
-    /// Runs `neru config validate` on `text` as if it were the config file at
-    /// `path`, with that file's override layered on top. Returns the error, or nil.
+    /// Validates `text` as `neru config validate` would, as if it were the
+    /// config file at `path`, with that file's override layered on top.
+    /// Returns the error, or nil.
     func validate(_ text: String, beside path: String) -> String? {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("homekey-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -63,7 +64,7 @@ extension Neru {
             if FileManager.default.fileExists(atPath: override.path) {
                 try FileManager.default.copyItem(at: override, to: dir.appendingPathComponent("config.override.toml"))
             }
-            let result = run(["config", "validate", "--config", candidate.path])
+            let result = send("validate-config", [candidate.path])
             return result.ok ? nil : result.out
         } catch {
             return error.localizedDescription

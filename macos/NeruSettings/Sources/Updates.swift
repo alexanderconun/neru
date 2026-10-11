@@ -44,24 +44,7 @@ final class UpdateChecker: ObservableObject {
         }
     }
 
-    /// NeruBuildID of the app this window ships in
-    /// (<App>.app/Contents/Helpers/Homekey Settings.app), else the tag in the
-    /// first line of `neru --version` ("Neru version <tag>"), else "".
-    static func installedVersion(cliVersion: String) -> String {
-        let app = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let buildID = app.pathExtension == "app" ? Bundle(url: app)?.object(forInfoDictionaryKey: "NeruBuildID") as? String : nil
-        return installedVersion(buildID: buildID, cliVersion: cliVersion)
-    }
-
     // MARK: pure helpers (covered by Tests/UpdateTests.swift)
-
-    static func installedVersion(buildID: String?, cliVersion: String) -> String {
-        if let buildID, !buildID.isEmpty { return buildID }
-        let first = cliVersion.components(separatedBy: "\n")[0]
-        let prefix = "Neru version "
-        // Anything else is an error message (no binary), not a version.
-        return first.hasPrefix(prefix) ? String(first.dropFirst(prefix.count)) : ""
-    }
 
     /// Release tags look like v1.2.3 or v1.2.3-hk.4; anything else (a
     /// `git describe` string, "dev") is a development build.
