@@ -245,8 +245,14 @@ struct TutorialProgress {
     /// The modes that point with a grid.
     static let gridModes: Set = ["grid", "recursive_grid", "bisect"]
 
-    /// nil past the last step: the finished screen.
-    var step: TutorialStep? = .showLabels
+    /// nil past the last step: the finished screen. Every step shown starts
+    /// from scratch: a grid or chain from before does not carry over.
+    var step: TutorialStep? = .showLabels {
+        didSet {
+            gridLeft = .distantPast
+            chained = []
+        }
+    }
     var done: Set<TutorialStep> = []
     private(set) var mode = "idle"
     private var gridLeft = Date.distantPast
@@ -276,8 +282,9 @@ struct TutorialProgress {
         case ("Right-click me", .right): complete(.rightClick)
         // Search state is not watchable; a click on Rocket is the proof.
         case ("Rocket", .left): complete(.search)
-        // A grid with an action clicks as it ends, and its exit may arrive first.
-        case (Self.dot, .left) where Self.gridModes.contains(mode) || now.timeIntervalSince(gridLeft) < 2:
+        // A grid with an action clicks as it ends, and its exit may arrive
+        // first; any button, as the grid shortcut may right-click.
+        case (Self.dot, _) where Self.gridModes.contains(mode) || now.timeIntervalSince(gridLeft) < 2:
             complete(.grid)
         case (_, .left) where ["1", "2", "3"].contains(target) && mode == "hints":
             chained.insert(target)
@@ -368,7 +375,12 @@ extension Neru {
             let without = hints.map { "without pressing \($0) again" } ?? "without showing the labels again"
             let text = "With Chain clicks on, labels come back after every click until you press \(escape). Turn it on, then click 1, 2 and 3 \(without)."
             let lead = hints == nil ? "\(noHints) " : ""
-            return lead + text + (keys.launchers.autoClick ? "" : " Chain clicks needs Automatic click: turn that on in Settings › Clicking first.")
+            // The switch edits the Clicking page's own launchers, which a
+            // user's launcher with other flags is not: it needs one of those.
+            let needs = Neru.launchers(in: keys.bindings).autoClick ? ""
+                : keys.launchers.autoClick ? " Chain clicks needs a Clicking shortcut with Automatic click: set one up in Settings › Clicking first."
+                : " Chain clicks needs Automatic click: turn that on in Settings › Clicking first."
+            return lead + text + needs
         }
     }
 
@@ -432,7 +444,7 @@ struct PracticeKeys {
         menuBar = Neru.value("systray.enabled", in: dump) as? Bool ?? true
     }
 
-    /// A launcher's shortcut as the window shows it ("⌘⇧Space"), or nil.
+    /// A launcher's shortcut as the window shows it ("⇧⌘Space"), or nil.
     func shortcut(_ role: Neru.LauncherRole) -> String? { launchers.combos[role].map(Shortcut.display) }
 
     /// The shortcut that starts `mode`, or nil: the one bound to just `mode`,
@@ -445,9 +457,11 @@ struct PracticeKeys {
 
     func shortcut(mode: String) -> String? { binding(mode: mode).map { Shortcut.display($0.combo) } }
 
-    /// The grid shortcut left-clicks as it picks (`grid --action left_click`).
+    /// The grid shortcut clicks as it picks (`grid --action left_click`, or
+    /// a right, middle or double click), rather than only moving the pointer.
     var gridClicks: Bool {
-        binding(mode: "grid").flatMap { Neru.parseLauncher([$0.command], mode: "grid", lenient: true) }?.action == "left_click"
+        let action = binding(mode: "grid").flatMap { Neru.parseLauncher([$0.command], mode: "grid", lenient: true) }?.action
+        return action?.split(separator: ",").allSatisfy(["left_click", "right_click", "middle_click"].contains) ?? false
     }
 
     func hintsKey(_ steps: String, or fallback: String) -> String { Self.key(steps, in: hints, or: fallback) }

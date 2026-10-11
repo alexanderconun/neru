@@ -63,13 +63,13 @@ func runLauncherTests() {
 
     // Conflicts: anything else bound refuses, a role's own combo does not.
     // A mode's recorder has no clear button, so the message says only "Change".
-    assert(Neru.launcherConflict("Primary+Shift+G", for: .search, in: dump) == "⌘⇧G is already used by \"grid\". Change that one first.")
+    assert(Neru.launcherConflict("Primary+Shift+G", for: .search, in: dump) == "⇧⌘G is already used by \"grid\". Change that one first.")
     assert(Neru.launcherConflict("Ctrl+Alt+R", for: .main, in: dump)?.hasSuffix("Change or clear that one first.") == true)
     assert(Neru.launcherConflict("Ctrl+Alt+S", for: .main, in: dump)?.contains("the search shortcut") == true)
     assert(Neru.launcherConflict("Ctrl+Alt+H", for: .main, in: dump)?.contains("hints --role AXButton") == true)
     assert(Neru.launcherConflict("ctrl+alt+r", for: .rightClick, in: dump) == nil)
     assert(Neru.launcherConflict("Cmd+Shift+J", for: .main, in: dump) == nil)
-    assert(Neru.launcherConflict("Cmd+Shift+Space", for: .search, in: dump) == "⌘⇧Space is already used by the clicking shortcut. Change that one first.")
+    assert(Neru.launcherConflict("Cmd+Shift+Space", for: .search, in: dump) == "⇧⌘Space is already used by the clicking shortcut. Change that one first.")
     // Chords compare as the loader does: modifier order and aliases do not matter.
     assert(Neru.launcherConflict("Primary+Alt+H", for: .search, in: ["Alt+Cmd+H": ["grid"]]) != nil)
     assert(Neru.launcherConflict("Primary+Shift+K", for: .search, in: ["Shift+Command+K": ["grid"]]) != nil)

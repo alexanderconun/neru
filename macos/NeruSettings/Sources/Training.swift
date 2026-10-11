@@ -279,17 +279,19 @@ struct TrainingBoard {
     }
 
     /// Up to `count` rects of `size` at random spots inside `board`, `margin`
-    /// from its edges and at least `gap` apart: each gets its own cell of a
-    /// grid laid over the board and a random spot inside it. A board too
-    /// small for `count` gets as many as fit.
+    /// from its edges and at least `gap` apart, on whole points: each gets
+    /// its own cell of a grid laid over the board and a random spot inside
+    /// it, as homekey-rs deals them. A board too small for `count` gets as
+    /// many as fit.
     static func place(_ count: Int, size: CGSize, in board: CGSize, margin: CGFloat = 16, gap: CGFloat = 10) -> [CGRect] {
         let width = board.width - 2 * margin + gap, height = board.height - 2 * margin + gap
         let cols = max(Int(width / (size.width + gap)), 0), rows = max(Int(height / (size.height + gap)), 0)
         guard cols > 0, rows > 0 else { return [] }
-        let pitch = CGSize(width: width / CGFloat(cols), height: height / CGFloat(rows))
+        let pitch = CGSize(width: (width / CGFloat(cols)).rounded(.down), height: (height / CGFloat(rows)).rounded(.down))
+        func jitter(_ room: CGFloat) -> CGFloat { CGFloat(Int.random(in: 0 ... Int(room))) }
         return (0 ..< cols * rows).shuffled().prefix(count).map { cell in
-            CGRect(x: margin + CGFloat(cell % cols) * pitch.width + .random(in: 0 ... pitch.width - size.width - gap),
-                   y: margin + CGFloat(cell / cols) * pitch.height + .random(in: 0 ... pitch.height - size.height - gap),
+            CGRect(x: margin + CGFloat(cell % cols) * pitch.width + jitter(pitch.width - size.width - gap),
+                   y: margin + CGFloat(cell / cols) * pitch.height + jitter(pitch.height - size.height - gap),
                    width: size.width, height: size.height)
         }
     }

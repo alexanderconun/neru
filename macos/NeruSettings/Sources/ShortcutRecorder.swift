@@ -33,12 +33,16 @@ enum Shortcut {
         return (parts + [key]).joined(separator: "+")
     }
 
-    /// Mode tables spell keys in any case ("escape", "Shift+Tab").
+    /// Mode tables spell keys in any case ("escape", "Shift+Tab"). The
+    /// modifiers come in the menus' order, ⌃⌥⇧⌘, whatever the config's.
     static func display(_ combo: String) -> String {
         let symbols = ["primary": "⌘", "cmd": "⌘", "ctrl": "⌃", "alt": "⌥", "shift": "⇧",
                        "up": "↑", "down": "↓", "left": "←", "right": "→", "escape": "⎋",
                        "tab": "⇥", "return": "↩", "enter": "↩", "backspace": "⌫", "delete": "⌫"]
-        return combo.split(separator: "+").map { symbols[$0.lowercased()] ?? String($0) }.joined()
+        var parts = combo.split(separator: "+").map { symbols[$0.lowercased()] ?? String($0) }
+        let key = parts.popLast() ?? ""
+        let order = ["⌃", "⌥", "⇧", "⌘"]
+        return (order.filter(parts.contains) + parts.filter { !order.contains($0) } + [key]).joined()
     }
 }
 

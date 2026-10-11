@@ -53,10 +53,13 @@ func runCoreTests() {
     // included; its own combo, in any spelling, is not refused.
     let launcher = ["Primary+Shift+Space": ["hints --action left_click"], "Primary+Shift+G": ["grid"]]
     assert(Neru.shortcutConflict("Primary+Shift+Space", in: launcher) { $0 == ["grid"] }
-        == "⌘⇧Space is already used by the clicking shortcut. Change that one first.")
+        == "⇧⌘Space is already used by the clicking shortcut. Change that one first.")
     assert(Neru.shortcutConflict("Shift+Cmd+G", in: launcher) { $0 == ["grid"] } == nil)
     assert(Neru.shortcutConflict("Primary+Shift+G", in: launcher) { $0 == ["scroll"] }
-        == "⌘⇧G is already used by \"grid\". Change that one first.")
+        == "⇧⌘G is already used by \"grid\". Change that one first.")
+    // Shortcuts read in the menus' modifier order, however the config spells them.
+    assert(Shortcut.display("Primary+Shift+Space") == "⇧⌘Space")
+    assert(Shortcut.display("Alt+Ctrl+F") == "⌃⌥F" && Shortcut.display("Shift+tab") == "⇧⇥" && Shortcut.display("gg") == "gg")
 
     // Table headers are found with a trailing comment or a CRLF line end,
     // so an edit never appends a second [hotkeys] the loader refuses.

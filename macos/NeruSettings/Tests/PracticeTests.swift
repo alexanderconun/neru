@@ -59,10 +59,19 @@ func runPracticeTests() {
     assert(grid.done == [.grid])
     var recursive = progress(at: .grid)
     recursive.modeChanged("recursive_grid", entered: true, windowIsKey: true, at: now)
-    recursive.clicked(TutorialProgress.dot, .right, at: now)
+    recursive.clicked("Click me", .left, at: now)
     assert(recursive.done.isEmpty)
-    recursive.clicked(TutorialProgress.dot, .left, at: now)
+    // Any button: a grid shortcut may right-click as it picks.
+    recursive.clicked(TutorialProgress.dot, .right, at: now)
     assert(recursive.done == [.grid])
+    // Showing a step starts it over: a grid that just ended on another
+    // step (or before the step was picked again) does not carry over.
+    var again = progress(at: .chain)
+    again.modeChanged("grid", entered: true, windowIsKey: true, at: now)
+    again.modeChanged("grid", entered: false, windowIsKey: true, at: now)
+    again.step = .grid
+    again.clicked(TutorialProgress.dot, .left, at: now)
+    assert(again.done.isEmpty)
 
     // Chain clicks: all three in one labels session; an exit in between
     // starts over, and clicks without labels do not count.
@@ -99,14 +108,14 @@ func runPracticeTests() {
                                                      "Shift+L": ["action left_click"], "Shift+R": ["action right_click"]]],
                                "scroll": ["hotkeys": Neru.defaultScrollHotkeys.mapValues { [$0] }]]
     assert(Neru.tutorialText(.showLabels, in: user)
-        == "Press ⌘⇧Space to show labels. Letters appear on every button you can click. Press Escape to hide them.")
-    assert(Neru.tutorialText(.click, in: user) == "Press ⌘⇧Space, then type the letters on Click me.")
-    assert(Neru.tutorialText(.rightClick, in: user) == "Press ⌘⇧Space and type the label on Right-click me — the pointer is now on it. "
-        + "Press ⌘⇧Space again and then Shift+R: it right-clicks where the pointer is. Then press Escape to hide the labels.")
-    assert(Neru.tutorialText(.search, in: user) == "Press ⌘⇧Space, then /, type rocket and press Return.")
-    assert(Neru.tutorialText(.scroll, in: user) == "Put the pointer over the list and press ⌘⇧S. J and K scroll down and up, "
+        == "Press ⇧⌘Space to show labels. Letters appear on every button you can click. Press Escape to hide them.")
+    assert(Neru.tutorialText(.click, in: user) == "Press ⇧⌘Space, then type the letters on Click me.")
+    assert(Neru.tutorialText(.rightClick, in: user) == "Press ⇧⌘Space and type the label on Right-click me — the pointer is now on it. "
+        + "Press ⇧⌘Space again and then Shift+R: it right-clicks where the pointer is. Then press Escape to hide the labels.")
+    assert(Neru.tutorialText(.search, in: user) == "Press ⇧⌘Space, then /, type rocket and press Return.")
+    assert(Neru.tutorialText(.scroll, in: user) == "Put the pointer over the list and press ⇧⌘S. J and K scroll down and up, "
         + "D and U by half a page, gg goes to the top and Shift+G to the bottom. Escape stops.")
-    assert(Neru.tutorialText(.grid, in: user) == "Press ⌘⇧G, type the letters of the cell with the dot, then the letter of the small square "
+    assert(Neru.tutorialText(.grid, in: user) == "Press ⇧⌘G, type the letters of the cell with the dot, then the letter of the small square "
         + "on the dot. Press Shift+L to click, then Escape to close the grid.")
     assert(Neru.tutorialCommand(.click, in: user) == ["hints", "--action", "left_click"])
     assert(Neru.tutorialCommand(.rightClick, in: user) == ["hints", "--action", "left_click"])
@@ -141,12 +150,20 @@ func runPracticeTests() {
     // managed launcher wins over one bound earlier with other flags.
     let unmanaged = ["hotkeys": ["bindings": ["Primary+Shift+Space": ["hints --action left_click --exit-on-unmatched"],
                                               "Primary+Shift+G": ["grid --action left_click"], "Primary+Shift+S": ["scroll"]]]]
-    assert(Neru.tutorialText(.click, in: unmanaged) == "Press ⌘⇧Space, then type the letters on Click me.")
+    assert(Neru.tutorialText(.click, in: unmanaged) == "Press ⇧⌘Space, then type the letters on Click me.")
     assert(Neru.tutorialCommand(.click, in: unmanaged) == ["hints", "--action", "left_click", "--exit-on-unmatched"])
     assert(Neru.tutorialText(.grid, in: unmanaged)
-        == "Press ⌘⇧G, type the letters of the cell with the dot, then the letter of the small square on the dot. The grid clicks there.")
+        == "Press ⇧⌘G, type the letters of the cell with the dot, then the letter of the small square on the dot. The grid clicks there.")
     assert(Neru.tutorialCommand(.grid, in: unmanaged) == ["grid", "--action", "left_click"])
-    assert(Neru.tutorialSummary(in: unmanaged).map(\.keys) == ["⌘⇧Space", "⌘⇧Space, then /", "⌘⇧S", "⌘⇧G"])
+    assert(Neru.tutorialSummary(in: unmanaged).map(\.keys) == ["⇧⌘Space", "⇧⌘Space, then /", "⇧⌘S", "⇧⌘G"])
+    // Its clicks still count, but the Chain clicks switch edits the Clicking
+    // page's own launchers, and there is none: the text says to set one up.
+    assert(Neru.tutorialText(.chain, in: unmanaged).hasSuffix("without pressing ⇧⌘Space again. Chain clicks needs a Clicking shortcut "
+        + "with Automatic click: set one up in Settings › Clicking first."))
+    assert(Neru.tutorialText(.chain, in: chained).hasSuffix("without pressing ⇧⌘Space again."))
+    // A grid shortcut that right-clicks as it picks clicks there too.
+    let rightClickGrid = ["hotkeys": ["bindings": ["Ctrl+G": ["grid --action right_click"]]]]
+    assert(Neru.tutorialText(.grid, in: rightClickGrid).hasSuffix("on the dot. The grid clicks there."))
     let both = ["hotkeys": ["bindings": ["Ctrl+H": ["hints --role link"], "Primary+Shift+Space": ["hints --action left_click"],
                                          "Ctrl+G": ["grid --action right_click"], "Primary+Shift+G": ["grid"]]]]
     assert(Neru.tutorialCommand(.click, in: both) == ["hints", "--action", "left_click"])
@@ -211,7 +228,8 @@ func runPracticeTests() {
     assert(!TrainingScore.isNewBest(1.3, than: 1.3))
     assert(!TrainingScore.isNewBest(1.4, than: 1.3))
 
-    // Placement: in bounds with the margin, never overlapping, as many as asked.
+    // Placement: in bounds with the margin, at least 10 pt apart, on whole
+    // points, as many as asked (as homekey-rs's placement_never_overlaps…).
     let board = CGSize(width: 720, height: 380)
     let inside = CGRect(origin: .zero, size: board).insetBy(dx: 16, dy: 16)
     for (count, size) in [(12, TrainingBoard.buttonSize), (24, TrainingBoard.buttonSize), (1, TrainingBoard.dotSize)] {
@@ -219,8 +237,8 @@ func runPracticeTests() {
             let frames = TrainingBoard.place(count, size: size, in: board)
             assert(frames.count == count)
             for (index, frame) in frames.enumerated() {
-                assert(inside.contains(frame), "\(frame)")
-                for other in frames[(index + 1)...] { assert(!frame.insetBy(dx: -4, dy: -4).intersects(other), "\(frame) \(other)") }
+                assert(inside.contains(frame) && frame.minX == frame.minX.rounded() && frame.minY == frame.minY.rounded(), "\(frame)")
+                for other in frames[(index + 1)...] { assert(!frame.insetBy(dx: -9.5, dy: -9.5).intersects(other), "\(frame) \(other)") }
             }
         }
     }

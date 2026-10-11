@@ -127,7 +127,10 @@ are windows of the settings app, so you work through them with Homekey itself:
   (`com.alexanderconun.neru.settings`, keys `trainingBest.<round>`). In a
   Right-click round the left click a label gives the ★ button on the way is
   no miss. After a hit the board deals again, and labels still up read it
-  again (`neru hints` while they show refreshes them in place).
+  again (`neru hints` while they show refreshes them in place). That is not
+  atomic: labels closed in the few milliseconds between the status read and
+  that call open again, and a search opened outside the Search round is
+  dropped, as the CLI cannot refresh only open labels or tell a search is on.
 
 The daemon opens each window with
 `open -a "<…>/Helpers/Homekey Settings.app" homekey-settings://<settings|tutorial|training>`,
