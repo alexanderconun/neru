@@ -20,6 +20,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/y3owk1n/neru/internal/adapter/platform/darwin"
 	"github.com/y3owk1n/neru/internal/config"
 	"github.com/y3owk1n/neru/internal/derrors"
 	"github.com/y3owk1n/neru/internal/domain/element"
@@ -247,8 +248,32 @@ func (s *treeStats) recordDepth(depth int) {
 	}
 }
 
+// ownTreeTimeout bounds a walk of our own windows. It runs on the main thread,
+// which also serves the keyboard tap. The clock starts before the hop, so time
+// spent waiting for the main thread counts against it.
+const ownTreeTimeout = 500 * time.Millisecond
+
 // BuildTree constructs an accessibility tree starting from the specified root element.
+// Our own elements are walked on the main thread (see Element.isOwn).
 func BuildTree(ctx context.Context, root *Element, opts TreeOptions) (*TreeNode, error) {
+	if !root.isOwn() {
+		return buildTree(ctx, root, opts)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, ownTreeTimeout)
+	defer cancel()
+
+	var (
+		node *TreeNode
+		err  error
+	)
+
+	darwin.OnMainThread(func() { node, err = buildTree(ctx, root, opts) })
+
+	return node, err
+}
+
+func buildTree(ctx context.Context, root *Element, opts TreeOptions) (*TreeNode, error) {
 	select {
 	case <-ctx.Done():
 		return nil, derrors.Wrap(
@@ -682,7 +707,22 @@ func shouldIncludeElement(
 
 // FindClickableElements finds all clickable elements in the tree.
 // Search text is already accumulated during tree building via accumulateSearchText.
+// Our own elements are checked on the main thread (see Element.isOwn).
 func (n *TreeNode) FindClickableElements(
+	allowedRoles map[string]struct{},
+	configProvider config.Provider,
+	ignoreClickableCheck bool,
+) []*TreeNode {
+	var result []*TreeNode
+
+	onMainIfOwn(n.element, func() {
+		result = n.findClickableElements(allowedRoles, configProvider, ignoreClickableCheck)
+	})
+
+	return result
+}
+
+func (n *TreeNode) findClickableElements(
 	allowedRoles map[string]struct{},
 	configProvider config.Provider,
 	ignoreClickableCheck bool,

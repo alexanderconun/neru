@@ -55,6 +55,12 @@ func PrimeApplication(bundleID string, logger *zap.Logger) bool {
 	}
 	defer app.Release()
 
+	// Our own windows are AppKit and SwiftUI: nothing to wait for, and walking
+	// them off the main thread runs their accessibility code there.
+	if app.isOwn() {
+		return true
+	}
+
 	return waitForAccessibility(app, logger)
 }
 

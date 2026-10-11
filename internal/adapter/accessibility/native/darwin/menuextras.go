@@ -11,6 +11,7 @@ import "C"
 import (
 	"context"
 	"sync"
+	"unsafe"
 
 	"go.uber.org/zap"
 
@@ -48,7 +49,10 @@ func (e *Element) ExtrasMenuBar() *Element {
 		return nil
 	}
 
-	ref := C.NeruGetExtrasMenuBar(e.ref)
+	var ref unsafe.Pointer
+
+	onMainIfOwn(e, func() { ref = C.NeruGetExtrasMenuBar(e.ref) })
+
 	if ref == nil {
 		return nil
 	}

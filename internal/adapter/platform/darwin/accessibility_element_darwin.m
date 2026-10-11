@@ -48,6 +48,11 @@ void *NeruGetFocusedApplication(void) {
 	}
 }
 
+int NeruIsOwnElement(void *element) {
+	pid_t pid = 0;
+	return element && AXUIElementGetPid((AXUIElementRef)element, &pid) == kAXErrorSuccess && pid == getpid();
+}
+
 /// Get the menu bar element of an application
 /// @param app Application reference
 /// @return Menu bar element reference

@@ -317,6 +317,26 @@ func ElementAtPosition(x, y int) *Element {
 	return newElement(ref)
 }
 
+// isOwn reports whether e belongs to this process: one of our own windows
+// (Settings, Tutorial, Training), our menu bar icon or our hidden menu.
+// Accessibility questions about our own process are not sent to our main
+// thread: AppKit answers them on the asking thread, so they must be asked
+// from the main thread (OnMainThread).
+func (e *Element) isOwn() bool {
+	return e != nil && e.ref != nil && C.NeruIsOwnElement(e.ref) != 0
+}
+
+// onMainIfOwn runs fn on the main thread when e is ours (see isOwn), else here.
+func onMainIfOwn(e *Element, fn func()) {
+	if e.isOwn() {
+		darwin.OnMainThread(fn)
+
+		return
+	}
+
+	fn()
+}
+
 // Info retrieves metadata and positioning information for the element.
 func (e *Element) Info() (*ElementInfo, error) {
 	if e.ref == nil {
@@ -587,7 +607,10 @@ func (e *Element) MenuBar() *Element {
 	if e.ref == nil {
 		return nil
 	}
-	ref := C.NeruGetMenuBar(e.ref)
+	var ref unsafe.Pointer
+
+	onMainIfOwn(e, func() { ref = C.NeruGetMenuBar(e.ref) })
+
 	if ref == nil {
 		return nil
 	}
