@@ -23,10 +23,7 @@ struct TrainingView: View {
                     .labelsHidden()
                     .fixedSize()
                     Spacer()
-                    Button(training.running ? "Stop" : "Start") {
-                        training.running ? training.stop() : training.start()
-                        training.relabel(training.round == .search)
-                    }
+                    Button(training.running ? "Stop" : "Start") { training.running ? training.stop() : training.start() }
                     .frame(minWidth: 70)
                 }
                 Text(stats).monospacedDigit().foregroundStyle(.secondary)
@@ -36,10 +33,7 @@ struct TrainingView: View {
             .padding(20)
         }
         .frame(width: 760, height: 560)
-        .onAppear {
-            neru.watchModes(true)
-            training.relabel = neru.relabel(search:)
-        }
+        .onAppear { neru.watchModes(true) }
         .onDisappear {
             neru.watchModes(false)
             training.stop()
@@ -104,7 +98,6 @@ final class Training: ObservableObject {
             score = TrainingScore(click: round.click)
             finishedAverage = nil
             deal()
-            relabel(round == .search)
         }
     }
 
@@ -116,17 +109,17 @@ final class Training: ObservableObject {
     @Published private(set) var newBest = false
     private var size = CGSize(width: 720, height: 400)
     private let defaults: UserDefaults?
-    /// Has labels that are up read the board again after it changed under
-    /// them (a hit, Start or Stop, another round), `search` reopening a
-    /// search in the Search round; set by the view.
-    var relabel: (_ search: Bool) -> Void = { _ in }
 
     init(defaults: UserDefaults? = .standard) {
         self.defaults = defaults
         deal()
     }
 
-    var best: TimeInterval? { defaults?.object(forKey: round.bestKey) as? TimeInterval }
+    /// The best average: a new one at once, even where nothing is kept (a render).
+    var best: TimeInterval? {
+        if newBest, let finishedAverage { return finishedAverage }
+        return defaults?.object(forKey: round.bestKey) as? TimeInterval
+    }
 
     /// Keeps the board's deal and starts the clock on it.
     func start() {
@@ -149,10 +142,14 @@ final class Training: ObservableObject {
             if newBest { defaults?.set(average, forKey: round.bestKey) }
             finishedAverage = average
         }
-        if hit {
-            deal()
-            relabel(round == .search)
-        }
+        // ponytail: labels still up over the old board stay as they were
+        // (homekey-rs reads the board again in-process). The CLI can only
+        // activate hints, and that over open labels drops their search and
+        // --on-exit steps, or opens new ones if they closed since a status
+        // read. Chain clicks scans again by itself; else labels stay up only
+        // after Shift+L or R, and Escape and the shortcut show them anew.
+        // Upgrade path: a daemon request that scans again only open, untouched labels.
+        if hit { deal() }
     }
 
     /// Lays the board out again for its real size, keeping the words and target.

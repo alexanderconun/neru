@@ -126,11 +126,13 @@ are windows of the settings app, so you work through them with Homekey itself:
   round type is kept in the settings app's defaults
   (`com.alexanderconun.neru.settings`, keys `trainingBest.<round>`). In a
   Right-click round the left click a label gives the ★ button on the way is
-  no miss. After a hit the board deals again, and labels still up read it
-  again (`neru hints` while they show refreshes them in place). That is not
-  atomic: labels closed in the few milliseconds between the status read and
-  that call open again, and a search opened outside the Search round is
-  dropped, as the CLI cannot refresh only open labels or tell a search is on.
+  no miss. After a hit the board deals again. With Chain clicks the labels
+  read it again by themselves; labels still up otherwise (after Shift+L or
+  Shift+R) stay on the old board until shown anew. homekey-rs reads it again
+  in-process, but the CLI cannot: `neru hints` over open labels drops their
+  search and `--on-exit` steps, and opens new labels if they closed since a
+  `status` read. A daemon request that scans again only open, untouched
+  labels would close that.
 
 The daemon opens each window with
 `open -a "<…>/Helpers/Homekey Settings.app" homekey-settings://<settings|tutorial|training>`,

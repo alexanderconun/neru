@@ -161,26 +161,6 @@ extension Neru {
         }
     }
 
-    /// Has labels that are up read the window again, after a practice board
-    /// changed under them: `hints` while hints is open scans again in place
-    /// and keeps the flags it was opened with. That drops a search, so
-    /// `search` (the Search round) opens it again.
-    func relabel(search: Bool) {
-        // ponytail: a fixed pause for the new board to be drawn and for a
-        // label's own click to close its mode first. Not atomic, as the CLI
-        // has no "scan again only while open" and status reports neither a
-        // search in progress nor the flags labels were opened with: labels
-        // closed in the few ms between the status read and `hints` open
-        // again, and a search opened outside the Search round is dropped.
-        // A daemon flag would close both; homekey-rs does it in-process.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            self.queue.async {
-                guard Self.json(self.run(["status", "--json"]).out)?["mode"] as? String == "hints" else { return }
-                _ = self.run(search ? ["hints", "--search"] : ["hints"])
-            }
-        }
-    }
-
     /// Reads the scroll direction the daemon uses now into scrollInverted.
     func readScrollInverted() {
         queue.async {

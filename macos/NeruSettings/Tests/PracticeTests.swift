@@ -190,6 +190,10 @@ func runPracticeTests() {
         .hasPrefix("The grid has no shortcut yet. Use Try it here, the menu bar icon, or set one in Settings › Grid. Type the letters"))
     assert(Neru.tutorialCommand(.click, in: none) == ["hints"])
     assert(Neru.tutorialSummary(in: none).allSatisfy { $0.keys == "No shortcut" })
+    // No Clicking or search shortcut: Automatic click cannot stay on until there is one.
+    assert(Neru.tutorialText(.chain, in: none).hasSuffix("Chain clicks needs a Clicking shortcut with Automatic click: set one up in Settings › Clicking first."))
+    let ownLabels = ["hotkeys": ["bindings": ["Ctrl+H": ["hints --role link"]]]]
+    assert(Neru.tutorialText(.chain, in: ownLabels).hasSuffix("set one up in Settings › Clicking first."))
 
     // Inverted scrolling turns every scroll key around.
     var inverted = user
@@ -227,6 +231,13 @@ func runPracticeTests() {
     assert(TrainingScore.isNewBest(1.2, than: 1.3))
     assert(!TrainingScore.isNewBest(1.3, than: 1.3))
     assert(!TrainingScore.isNewBest(1.4, than: 1.3))
+    // A new best shows as the best at once, even where nothing is kept.
+    let played = Training(defaults: nil)
+    played.start()
+    for _ in 0 ..< TrainingScore.hitsPerRound { played.press(played.board.target, .left, at: played.board.shownAt + 1.25) }
+    assert(played.newBest && played.best == 1.25)
+    played.round = .grid
+    assert(played.best == nil)
 
     // Placement: in bounds with the margin, at least 10 pt apart, on whole
     // points, as many as asked (as homekey-rs's placement_never_overlaps…).

@@ -376,9 +376,12 @@ extension Neru {
             let text = "With Chain clicks on, labels come back after every click until you press \(escape). Turn it on, then click 1, 2 and 3 \(without)."
             let lead = hints == nil ? "\(noHints) " : ""
             // The switch edits the Clicking page's own launchers, which a
-            // user's launcher with other flags is not: it needs one of those.
-            let needs = Neru.launchers(in: keys.bindings).autoClick ? ""
-                : keys.launchers.autoClick ? " Chain clicks needs a Clicking shortcut with Automatic click: set one up in Settings › Clicking first."
+            // user's launcher with other flags is not: it needs one of those,
+            // and Automatic click stays on only while there is one.
+            let managed = Neru.launchers(in: keys.bindings)
+            let needs = managed.autoClick ? ""
+                : keys.launchers.autoClick || (managed.combos[.main] ?? managed.combos[.search]) == nil
+                ? " Chain clicks needs a Clicking shortcut with Automatic click: set one up in Settings › Clicking first."
                 : " Chain clicks needs Automatic click: turn that on in Settings › Clicking first."
             return lead + text + needs
         }
