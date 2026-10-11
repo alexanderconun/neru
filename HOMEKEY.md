@@ -111,6 +111,42 @@ Release zips are signed ad hoc. Until Developer ID signing and notarization are
 set up (the commented secrets in `publish-artifacts.yml`), people who install a
 downloaded release have to re-grant Accessibility after every update.
 
+## Tutorial and Training
+
+The menu bar has **Tutorial…** and **Training…** right after Settings…. Both
+are windows of the settings app, so you work through them with Homekey itself:
+
+- **Tutorial**: seven steps (show labels, click, right-click, search, scroll,
+  grid, chain clicks), each with targets to practise on. The instructions are
+  written from your own shortcuts and click settings and follow them as they
+  change. **Try it here** starts the step's mode for you. Nothing is saved
+  between openings.
+- **Training**: rounds of ten hits on the ★ button (Clicking, Right-click,
+  Search) or on a dot only the grid reaches (Grid). The best average of each
+  round type is kept in the settings app's defaults
+  (`com.alexanderconun.neru.settings`, keys `trainingBest.<round>`).
+
+The daemon opens each window with
+`open -a "<…>/Helpers/Homekey Settings.app" homekey-settings://<settings|tutorial|training>`,
+naming the exact app because LaunchServices may know older copies that claim
+the scheme too. The app opens just that window whether or not it is running.
+The windows follow the mode through `neru watch` while they are open.
+
+The first time the daemon runs with Accessibility granted it opens the
+Tutorial once and writes `~/Library/Application Support/neru/tutorial-shown`.
+Delete that file to see it open by itself again.
+
+To check the windows' layout without screen recording, render them offscreen:
+
+```bash
+"bin/Homekey Settings.app/Contents/MacOS/HomekeySettings" --render /tmp/render [dump.json]
+```
+
+It writes light and dark PNGs of every tutorial step, the finished screen and
+each training round, never runs the CLI and never writes defaults. `dump.json`
+is a saved `neru config dump` to render with; without it the default shortcuts
+are used.
+
 ## What stays "neru"
 
 Only display names and icons are rebranded: `CFBundleName`/`CFBundleDisplayName`
