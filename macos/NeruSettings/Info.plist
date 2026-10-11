@@ -22,5 +22,16 @@
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.alexanderconun.neru.settings</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>homekey-settings</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

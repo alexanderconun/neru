@@ -3,8 +3,14 @@ import SwiftUI
 
 @main
 struct NeruSettingsApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var neru = Neru()
 
+    init() { Render.run(CommandLine.arguments) }
+
+    // The daemon's menu items open each window by its homekey-settings://<id>
+    // URL, whether or not this app runs, without opening the others. URLs are
+    // matched whole: SwiftUI matches by substring, and every one says "settings".
     var body: some Scene {
         Window("\(Neru.appName) Settings", id: "settings") {
             ContentView()
@@ -12,7 +18,23 @@ struct NeruSettingsApp: App {
                 .frame(minWidth: 720, minHeight: 520)
         }
         .windowResizability(.contentMinSize)
+        .handlesExternalEvents(matching: ["homekey-settings://settings"])
+        Window("\(Neru.appName) Tutorial", id: "tutorial") {
+            TutorialView().environmentObject(neru)
+        }
+        .windowResizability(.contentSize)
+        .handlesExternalEvents(matching: ["homekey-settings://tutorial"])
+        Window("\(Neru.appName) Training", id: "training") {
+            TrainingView().environmentObject(neru)
+        }
+        .windowResizability(.contentSize)
+        .handlesExternalEvents(matching: ["homekey-settings://training"])
     }
+}
+
+/// Quits with the last window, as a single Window scene does by itself.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
 
 enum Page: String, CaseIterable, Identifiable {

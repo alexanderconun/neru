@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import Combine
 
 /// Talks to the running daemon through the `neru` CLI: `config dump` to read,
 /// `config set` to write (persisted to config.override.toml by the daemon).
@@ -18,6 +19,12 @@ final class Neru: ObservableObject {
     @Published var version = ""
     @Published var error: String?
 
+    /// Each mode_enter (`entered`) and mode_exit from `neru watch`, while a
+    /// practice window keeps it running (Practice.swift).
+    let modeEvents = PassthroughSubject<(mode: String, entered: Bool), Never>()
+    var watcher: Process?
+    var watchers = 0
+
     private(set) var binary: String?
     private(set) var configPath = ""
 
@@ -34,7 +41,19 @@ final class Neru: ObservableObject {
         "Primary+Shift+S": "scroll",
     ]
 
-    init() { refresh() }
+    init() {
+        refresh()
+        // A watch outlives this app otherwise, until the daemon next has an event.
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in
+            self.watcher?.terminate()
+        }
+    }
+
+    /// Shows `config` and never runs the CLI: for rendering the windows offscreen.
+    init(config: [String: Any]) {
+        self.config = config
+        running = true
+    }
 
     /// Prefers the first binary the running daemon accepts: a CLI of another
     /// version is refused with ERR_VERSION_MISMATCH.
