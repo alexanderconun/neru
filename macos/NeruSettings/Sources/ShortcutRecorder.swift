@@ -53,6 +53,7 @@ struct ShortcutRecorder: View {
     private var onClear: (() -> Void)?
     @State private var recording = false
     @State private var monitor: Any?
+    @State private var resignObserver: NSObjectProtocol?
 
     init(mode: String) { self.mode = mode }
 
@@ -91,12 +92,20 @@ struct ShortcutRecorder: View {
             if let mode { neru.setShortcut(combo, for: mode) } else { onRecord?(combo) }
             return nil
         }
+        // The monitor sees every window's keys: leaving this one (for the
+        // Tutorial, or another app) stops recording and resumes the daemon.
+        if let window = NSApp.keyWindow {
+            resignObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { _ in stop() }
+        }
     }
 
     private func stop() {
         guard recording else { return }
         if let monitor { NSEvent.removeMonitor(monitor) }
+        if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
         monitor = nil
+        resignObserver = nil
         recording = false
         neru.pause(false)
     }
