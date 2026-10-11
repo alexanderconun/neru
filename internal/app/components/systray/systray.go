@@ -473,7 +473,8 @@ const tutorialShownFile = "tutorial-shown"
 // handleOpenSettings opens one of the settings app's windows. Without the app,
 // Settings falls back to the config file.
 func (c *Component) handleOpenSettings(window string) {
-	if OpenSettingsApp(c.ctx, c.logger, window) {
+	found, _ := OpenSettingsApp(c.ctx, c.logger, window)
+	if found {
 		return
 	}
 
@@ -488,10 +489,11 @@ func (c *Component) handleOpenSettings(window string) {
 }
 
 // OpenSettingsApp opens window in the settings app bundled in Neru.app, next
-// to the neru binary, or in /Applications, and reports whether it found one.
-// It needs no tray, so the headless daemon's reopen handler uses it too. It
-// runs /usr/bin/open synchronously: never call it on the Cocoa main thread.
-func OpenSettingsApp(ctx context.Context, logger *zap.Logger, window string) bool {
+// to the neru binary, or in /Applications. It reports whether it found the
+// app and whether opening it worked; a failure is logged here. It needs no
+// tray, so the headless daemon's reopen handler uses it too. It runs
+// /usr/bin/open synchronously: never call it on the Cocoa main thread.
+func OpenSettingsApp(ctx context.Context, logger *zap.Logger, window string) (found, opened bool) {
 	candidates := []string{filepath.Join("/Applications", settingsAppName)}
 
 	exe, err := os.Executable()
@@ -524,17 +526,17 @@ func OpenSettingsApp(ctx context.Context, logger *zap.Logger, window string) boo
 			)
 		}
 
-		return true
+		return true, openErr == nil
 	}
 
-	return false
+	return false, false
 }
 
 // OpenTutorialOnce opens the tutorial the first time the daemon runs, and
 // marks it shown in dataDir so it never opens by itself again. open opens it
-// and reports whether the settings app was there; without it nothing is
-// marked, so a later launch tries again. It blocks on open: run it off the
-// Cocoa main thread.
+// and reports whether it did; when it did not (no settings app, or opening
+// failed) nothing is marked, so a later launch tries again. It blocks on
+// open: run it off the Cocoa main thread.
 func OpenTutorialOnce(dataDir string, open func() bool, logger *zap.Logger) {
 	marker := filepath.Join(dataDir, tutorialShownFile)
 

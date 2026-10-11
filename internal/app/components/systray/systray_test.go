@@ -161,21 +161,23 @@ func TestOpenTutorialOnce(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	dataDir := filepath.Join(t.TempDir(), "neru")
 	opened := 0
-	open := func(found bool) func() bool {
+	open := func(ok bool) func() bool {
 		return func() bool {
 			opened++
 
-			return found
+			return ok
 		}
 	}
 
-	// No settings app: nothing is marked, so the next launch tries again.
+	// Not opened (no settings app, or `open` failed with the app there):
+	// nothing is marked, so the next launch tries again.
+	systray.OpenTutorialOnce(dataDir, open(false), logger)
 	systray.OpenTutorialOnce(dataDir, open(false), logger)
 	systray.OpenTutorialOnce(dataDir, open(true), logger)
 	systray.OpenTutorialOnce(dataDir, open(true), logger)
 
-	if opened != 2 {
-		t.Errorf("tutorial opened %d times, want 2: once without the app, once for good", opened)
+	if opened != 3 {
+		t.Errorf("tutorial opened %d times, want 3: twice not opened, once for good", opened)
 	}
 
 	_, err := os.Stat(filepath.Join(dataDir, "tutorial-shown"))

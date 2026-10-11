@@ -86,10 +86,12 @@ func openTutorialOnce(application *app.App) {
 	}
 
 	traycomponent.OpenTutorialOnce(dataDir, func() bool {
-		return traycomponent.OpenSettingsApp(
+		_, opened := traycomponent.OpenSettingsApp(
 			context.Background(),
 			logger,
 			traycomponent.TutorialWindow,
 		)
+
+		return opened
 	}, logger)
 }

@@ -134,7 +134,9 @@ The windows follow the mode through `neru watch` while they are open.
 
 The first time the daemon runs with Accessibility granted it opens the
 Tutorial once and writes `~/Library/Application Support/neru/tutorial-shown`.
-Delete that file to see it open by itself again.
+If it could not open it (no settings app, or `open` failed), nothing is
+written and the next launch tries again. Delete that file to see it open by
+itself again.
 
 To check the windows' layout without screen recording, render them offscreen:
 
