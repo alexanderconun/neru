@@ -120,3 +120,27 @@ if ([NSThread isMainThread]) {
 
 Use `dispatch_sync` when the caller needs the result, and `dispatch_async` for
 UI updates and other non-blocking work.
+
+### Accessibility questions about our own process
+
+AppKit answers accessibility questions about this process on the thread that
+asks; they never wait for our main run loop. Asked from a scan goroutine, they
+run our AppKit and SwiftUI code there, and a walk of a SwiftUI view that is
+updating crashes. Ask them on the main thread: `NeruIsOwnElement` tells an
+element of ours apart by pid without sending it a message, and the walk hops
+with `OnMainThread` (`mainthread.go`) or `onMainIfOwn`
+(`accessibility_window_darwin.m`), both inline when already on the main thread.
+A hit-test that lands on one of our windows while another app is scanned still
+runs our hit-testing on the scan goroutine; it only happens with
+`visible_check_enabled` on.
+
+### Calls from Swift into Go
+
+The hints walk holds the mode handler's `h.mu` while it waits for the main
+thread (`internal/app/modes/AGENTS.md`). Go code that runs on the main thread
+must therefore never take `h.mu` or wait on anything that holds it: if it did,
+it would wait on the scan while the scan waits on it, for good. Swift calls Go
+from a background queue (`dispatchPrecondition(condition: .notOnQueue(.main))`)
+whenever the call can reach the handler: setting or reloading the config,
+pausing or resuming, running a mode. Go hands results back to Swift with
+`DispatchQueue.main.async`.
