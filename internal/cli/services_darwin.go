@@ -72,6 +72,7 @@ var (
 		"service is already loaded; check for existing installations (e.g., nix-darwin, home-manager) and uninstall them first",
 	)
 	errPlistAlreadyExists = errors.New("plist file already exists")
+	errUnknownLoginItemOp = errors.New("unknown login item operation")
 )
 
 // daemonStderrPath returns the absolute file the login agent's stderr is
@@ -275,4 +276,43 @@ func expandPath(path string) (string, error) {
 	}
 
 	return path, nil
+}
+
+// LoginItem runs `neru services status|install|uninstall` in this process
+// and reports whether Neru starts at login afterwards: whether its launch
+// agent plist exists. It is for the settings windows, which run inside the
+// daemon.
+//
+// When launchd started this daemon, booting the job out would end the daemon,
+// and the window asking, before the plist went. So uninstall then only removes
+// the plist; the loaded job ends when the daemon quits (a clean exit is not
+// restarted) or at logout.
+func LoginItem(op string) (bool, error) {
+	expandedPlist, err := expandPath(plistFile)
+	if err != nil {
+		return false, err
+	}
+
+	switch op {
+	case "status":
+	case "install":
+		err = installService()
+	case "uninstall":
+		if os.Getenv("XPC_SERVICE_NAME") != serviceLabel {
+			err = uninstallService()
+
+			break
+		}
+
+		err = os.Remove(expandedPlist)
+		if os.IsNotExist(err) {
+			err = nil
+		}
+	default:
+		return false, fmt.Errorf("%w: %q", errUnknownLoginItemOp, op)
+	}
+
+	_, statErr := os.Stat(expandedPlist)
+
+	return statErr == nil, err
 }

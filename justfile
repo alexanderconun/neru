@@ -335,6 +335,7 @@ test-foundation:
         ./internal/adapter/platform/fontgeneric \
         ./internal/adapter/platform/modifierstate \
         ./internal/adapter/platform/mousestate \
+        ./internal/adapter/settingsui \
         ./internal/adapter/systray/icon \
         ./internal/adapter/vision/contour \
         ./internal/ports \

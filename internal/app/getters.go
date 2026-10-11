@@ -1,12 +1,16 @@
 package app
 
 import (
+	"context"
+
 	"go.uber.org/zap"
 
+	"github.com/y3owk1n/neru/internal/adapter/ipc"
 	"github.com/y3owk1n/neru/internal/app/components/grid"
 	"github.com/y3owk1n/neru/internal/app/components/hints"
 	"github.com/y3owk1n/neru/internal/app/components/scroll"
 	"github.com/y3owk1n/neru/internal/config"
+	"github.com/y3owk1n/neru/internal/derrors"
 	"github.com/y3owk1n/neru/internal/domain/event"
 	"github.com/y3owk1n/neru/internal/ports"
 )
@@ -173,6 +177,25 @@ func (a *App) CurrentMode() Mode { return a.appState.CurrentMode() }
 // GetSystrayComponent returns the systray component.
 func (a *App) GetSystrayComponent() SystrayComponent {
 	return a.systrayComponent
+}
+
+// HandleCommand answers cmd in this process exactly as the IPC socket does,
+// for the settings windows the daemon hosts (adapter/settingsui).
+func (a *App) HandleCommand(ctx context.Context, cmd ipc.Command) ipc.Response {
+	if a.ipcController == nil {
+		return ipc.Response{Message: "the daemon is still starting", Code: ipc.CodeActionFailed}
+	}
+
+	return a.ipcController.HandleCommand(ctx, cmd)
+}
+
+// HandleWatch streams events in this process as `neru watch` does.
+func (a *App) HandleWatch(ctx context.Context, cmd ipc.Command, emit func(any) error) error {
+	if a.ipcController == nil {
+		return derrors.New(derrors.CodeActionFailed, "the daemon is still starting")
+	}
+
+	return a.ipcController.HandleWatch(ctx, cmd, emit)
 }
 
 // OnEnabledStateChanged registers a callback for when the enabled state changes.
