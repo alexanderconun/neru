@@ -143,7 +143,7 @@ final class Training: ObservableObject {
             finishedAverage = average
         }
         // ponytail: labels still up over the old board stay as they were
-        // (homekey-rs reads the board again in-process). The CLI can only
+        // (homekey-rs reads the board again in-process). A request can only
         // activate hints, and that over open labels drops their search and
         // --on-exit steps, or opens new ones if they closed since a status
         // read. Chain clicks scans again by itself; else labels stay up only
