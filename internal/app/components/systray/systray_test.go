@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"slices"
 	"testing"
+	"time"
 
 	"go.uber.org/zap/zaptest"
 
@@ -136,8 +137,8 @@ func TestComponent_OnReady(t *testing.T) {
 		}
 	}
 
-	// Tutorial and Training follow Settings, and like it exist only where
-	// the settings app does.
+	// Tutorial and Training follow Settings, and like it exist only on macOS,
+	// the one platform with the windows.
 	var titles []string
 	for _, item := range items {
 		titles = append(titles, item.Title())
@@ -157,6 +158,38 @@ func TestComponent_OnReady(t *testing.T) {
 	}
 }
 
+// The menu opens each window through the opener the composition root injects.
+func TestComponent_OnReady_MenuOpensTheWindows(t *testing.T) {
+	tray := &portmocks.MockSystrayPort{}
+	component := systray.NewComponent(&mockApp{}, tray, nil, zaptest.NewLogger(t))
+	opened := make(chan string, 1)
+	component.OpenWindow = func(window string) error {
+		opened <- window
+
+		return nil
+	}
+
+	component.OnReady()
+	t.Cleanup(component.OnExit)
+
+	for title, window := range map[string]string{
+		"Settings…": systray.SettingsWindow,
+		"Tutorial…": systray.TutorialWindow,
+		"Training…": systray.TrainingWindow,
+	} {
+		tray.FindItem(title).Click()
+
+		select {
+		case got := <-opened:
+			if got != window {
+				t.Errorf("%q opened %q, want %q", title, got, window)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("%q opened nothing", title)
+		}
+	}
+}
+
 func TestOpenTutorialOnce(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	dataDir := filepath.Join(t.TempDir(), "neru")
@@ -169,8 +202,8 @@ func TestOpenTutorialOnce(t *testing.T) {
 		}
 	}
 
-	// Not opened (no settings app, or `open` failed with the app there):
-	// nothing is marked, so the next launch tries again.
+	// Not opened (a build without the windows): nothing is marked, so the
+	// next launch tries again.
 	systray.OpenTutorialOnce(dataDir, open(false), logger)
 	systray.OpenTutorialOnce(dataDir, open(false), logger)
 	systray.OpenTutorialOnce(dataDir, open(true), logger)

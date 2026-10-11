@@ -21,12 +21,3 @@ func OpenExternal(ctx context.Context, target string) error {
 
 	return nil
 }
-
-// OpenWith is macOS-only: it opens a target with one app bundle, which only
-// the settings helper needs.
-func OpenWith(_ context.Context, _, _ string) error {
-	return derrors.New(
-		derrors.CodeNotSupported,
-		"opening a target with a chosen app is not supported",
-	)
-}

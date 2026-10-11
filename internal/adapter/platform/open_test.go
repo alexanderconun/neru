@@ -32,24 +32,3 @@ func TestOpenExternalReportsALaunchFailure(t *testing.T) {
 		t.Errorf("OpenExternal() error = %v, want code %s", err, wantCode)
 	}
 }
-
-// OpenWith is macOS-only. There the canceled context fails the launch, and
-// every other slot refuses outright.
-func TestOpenWithReportsALaunchFailure(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	err := platform.OpenWith(ctx, "/Applications/Example.app", "example://open")
-	if err == nil {
-		t.Fatal("OpenWith() = nil, want an error when the handler cannot launch")
-	}
-
-	wantCode := derrors.CodeNotSupported
-	if runtime.GOOS == string(platform.Darwin) {
-		wantCode = derrors.CodeExecFailed
-	}
-
-	if !derrors.IsCode(err, wantCode) {
-		t.Errorf("OpenWith() error = %v, want code %s", err, wantCode)
-	}
-}

@@ -9,6 +9,7 @@ import (
 	ipcadapter "github.com/y3owk1n/neru/internal/adapter/ipc"
 	"github.com/y3owk1n/neru/internal/adapter/keyfeed"
 	"github.com/y3owk1n/neru/internal/adapter/platform"
+	"github.com/y3owk1n/neru/internal/adapter/settingsui"
 	infrasystray "github.com/y3owk1n/neru/internal/adapter/systray"
 	textinputadapter "github.com/y3owk1n/neru/internal/adapter/textinput"
 	"github.com/y3owk1n/neru/internal/app/components"
@@ -241,6 +242,7 @@ func initializeSystrayComponent(app *App) {
 		app.systemPort,
 		app.logger,
 	)
+	systrayComponent.OpenWindow = settingsui.Open
 	app.systrayComponent = systrayComponent
 }
 

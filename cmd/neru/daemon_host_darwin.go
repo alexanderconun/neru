@@ -3,14 +3,14 @@
 package main
 
 import (
-	"context"
-
 	"go.uber.org/zap"
 
 	"github.com/y3owk1n/neru/internal/adapter/platform"
+	"github.com/y3owk1n/neru/internal/adapter/settingsui"
 	"github.com/y3owk1n/neru/internal/adapter/systray"
 	"github.com/y3owk1n/neru/internal/app"
 	traycomponent "github.com/y3owk1n/neru/internal/app/components/systray"
+	"github.com/y3owk1n/neru/internal/cli"
 )
 
 type darwinDaemonHost struct{}
@@ -36,8 +36,15 @@ func (darwinDaemonHost) Run(application *app.App) error {
 		runDone <- err
 	}()
 
+	// The settings windows reach the daemon in-process (app build only).
+	settingsui.Start(settingsui.Deps{
+		Commands:  application.HandleCommand,
+		Watch:     application.HandleWatch,
+		LoginItem: cli.LoginItem,
+	})
+
 	// The first run with Accessibility granted (main waited for it) opens the
-	// tutorial once. Off the main thread: opening blocks.
+	// tutorial once. Off the main thread: it touches the disk.
 	go openTutorialOnce(application)
 
 	systrayComponent := application.GetSystrayComponent()
@@ -47,14 +54,8 @@ func (darwinDaemonHost) Run(application *app.App) error {
 		systray.Run(systrayComponent.OnReady, systrayComponent.OnExit)
 	} else {
 		// With the menu bar icon hidden, opening the app again is the only way
-		// back to the settings window. Off the main thread: opening blocks.
-		systray.SetReopenHandler(func() {
-			go traycomponent.OpenSettingsApp(
-				context.Background(),
-				application.Logger(),
-				traycomponent.SettingsWindow,
-			)
-		})
+		// back to the settings window. A build without it has nothing to show.
+		systray.SetReopenHandler(func() { _ = settingsui.Open(traycomponent.SettingsWindow) })
 		systray.RunHeadless(func() {}, func() {})
 	}
 
@@ -66,8 +67,8 @@ func (darwinDaemonHost) Run(application *app.App) error {
 	return <-runDone
 }
 
-// openTutorialOnce opens the settings app's tutorial if the daemon has never
-// opened it, keeping the marker in the user data directory.
+// openTutorialOnce opens the tutorial if the daemon has never opened it,
+// keeping the marker in the user data directory.
 func openTutorialOnce(application *app.App) {
 	logger := application.Logger()
 
@@ -86,12 +87,6 @@ func openTutorialOnce(application *app.App) {
 	}
 
 	traycomponent.OpenTutorialOnce(dataDir, func() bool {
-		_, opened := traycomponent.OpenSettingsApp(
-			context.Background(),
-			logger,
-			traycomponent.TutorialWindow,
-		)
-
-		return opened
+		return settingsui.Open(traycomponent.TutorialWindow) == nil
 	}, logger)
 }

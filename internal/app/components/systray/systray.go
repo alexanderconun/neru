@@ -58,6 +58,12 @@ type Component struct {
 	system ports.SystemPort
 	logger *zap.Logger
 
+	// OpenWindow shows the Settings, Tutorial or Training window in this
+	// process (adapter/settingsui). The composition root sets it; nil, or an
+	// error from a build without the windows, opens the config file for
+	// Settings instead.
+	OpenWindow func(window string) error
+
 	// Context for goroutine lifecycle management
 	ctx    context.Context //nolint:containedctx // Used for proper goroutine cancellation
 	cancel context.CancelFunc
@@ -277,8 +283,8 @@ func (c *Component) Close() {
 }
 
 // OpenSettings opens the settings window, as the Settings… menu item does. The
-// macOS reopen event calls it on the Cocoa main thread, and opening runs
-// /usr/bin/open synchronously, so it must not run inline.
+// macOS reopen event calls it on the Cocoa main thread, and the config file
+// fallback runs /usr/bin/open synchronously, so it must not run inline.
 func (c *Component) OpenSettings() { go c.handleOpenSettings(SettingsWindow) }
 
 // updateMenuItems updates the systray menu items based on the current enabled state.
@@ -454,12 +460,7 @@ func (c *Component) handleOpenConfig() {
 	}
 }
 
-// settingsAppName is the macOS settings window app, built by `just build-settings`.
-const settingsAppName = "Homekey Settings.app"
-
-// The settings app's windows. Each opens from a homekey-settings://<window>
-// URL, which the app handles whether or not it is running and without opening
-// its other windows (macos/NeruSettings/Sources/App.swift).
+// The windows OpenWindow shows.
 const (
 	SettingsWindow = "settings"
 	TutorialWindow = "tutorial"
@@ -470,73 +471,26 @@ const (
 // has opened by itself once.
 const tutorialShownFile = "tutorial-shown"
 
-// handleOpenSettings opens one of the settings app's windows. Without the app,
-// Settings falls back to the config file.
+// handleOpenSettings opens one of the windows. A build without them (no
+// -tags homekey_ui) opens the config file for Settings, as upstream Neru does.
 func (c *Component) handleOpenSettings(window string) {
-	found, _ := OpenSettingsApp(c.ctx, c.logger, window)
-	if found {
+	if c.OpenWindow != nil && c.OpenWindow(window) == nil {
 		return
 	}
 
 	if window != SettingsWindow {
-		c.notify("Settings app not found")
+		c.notify("This build has no " + window + " window")
 
 		return
 	}
 
-	c.notify("Settings app not found, opening the config file instead")
 	c.handleOpenConfig()
-}
-
-// OpenSettingsApp opens window in the settings app bundled in Neru.app, next
-// to the neru binary, or in /Applications. It reports whether it found the
-// app and whether opening it worked; a failure is logged here. It needs no
-// tray, so the headless daemon's reopen handler uses it too. It runs
-// /usr/bin/open synchronously: never call it on the Cocoa main thread.
-func OpenSettingsApp(ctx context.Context, logger *zap.Logger, window string) (found, opened bool) {
-	candidates := []string{filepath.Join("/Applications", settingsAppName)}
-
-	exe, err := os.Executable()
-	if err == nil {
-		resolved, evalErr := filepath.EvalSymlinks(exe)
-		if evalErr == nil {
-			exe = resolved
-		}
-
-		dir := filepath.Dir(exe)
-		candidates = append([]string{
-			filepath.Join(dir, "..", "Helpers", settingsAppName), // inside Neru.app
-			filepath.Join(dir, settingsAppName),                  // next to a dev build
-		}, candidates...)
-	}
-
-	for _, path := range candidates {
-		_, statErr := os.Stat(path)
-		if statErr != nil {
-			continue
-		}
-
-		// That exact copy: older ones LaunchServices still knows claim the URL too.
-		openErr := platform.OpenWith(ctx, path, "homekey-settings://"+window)
-		if openErr != nil {
-			logger.Error(
-				"Failed to open settings app",
-				zap.Error(openErr),
-				zap.String("window", window),
-			)
-		}
-
-		return true, openErr == nil
-	}
-
-	return false, false
 }
 
 // OpenTutorialOnce opens the tutorial the first time the daemon runs, and
 // marks it shown in dataDir so it never opens by itself again. open opens it
-// and reports whether it did; when it did not (no settings app, or opening
-// failed) nothing is marked, so a later launch tries again. It blocks on
-// open: run it off the Cocoa main thread.
+// and reports whether it did; when it did not (a build without the windows)
+// nothing is marked, so a later launch tries again.
 func OpenTutorialOnce(dataDir string, open func() bool, logger *zap.Logger) {
 	marker := filepath.Join(dataDir, tutorialShownFile)
 
