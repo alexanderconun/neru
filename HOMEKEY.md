@@ -14,9 +14,10 @@ scripts/build-app.sh   # or: just app
 ```
 
 It needs Go and the Xcode command line tools. In one go it builds the
-version-stamped `neru` binary, the settings app (`Homekey Settings.app`) and its
-self-checks, then runs `scripts/dist.sh` to put together and sign
-`build/dist.noindex/Homekey.app`. It installs nothing. It ends by printing the
+version-stamped `neru` binary with the Settings, Tutorial and Training windows
+linked in (see [Settings windows](#settings-windows)), their self-checks, then
+runs `scripts/dist.sh` to put together and sign `build/dist.noindex/Homekey.app`.
+It installs nothing. It ends by printing the
 bundle path and the install steps below. The `.noindex` folder keeps Spotlight
 from offering the build as a second Homekey: both copies share the bundle id,
 and launching a stale ad-hoc build costs the installed app its Accessibility
@@ -93,7 +94,7 @@ suffix, so fork tags never clash with upstream's when you fetch them. It creates
 a normal (not pre-) release at the selected commit, so `/releases/latest`
 returns it. It then calls `publish-artifacts.yml`, which builds the six zips
 (`neru-{darwin,linux,windows}-{arm64,amd64}.zip`, each with a `.sha256`). The
-macOS zips contain `bin/neru`, `Homekey.app` (settings app included) and
+macOS zips contain `bin/neru`, `Homekey.app` (settings windows included) and
 `share/man`. The plist versions get the digits only (`1.57.0`). The full tag is
 in `NeruBuildID` and in `neru --version`.
 
@@ -111,10 +112,39 @@ Release zips are signed ad hoc. Until Developer ID signing and notarization are
 set up (the commented secrets in `publish-artifacts.yml`), people who install a
 downloaded release have to re-grant Accessibility after every update.
 
+## Settings windows
+
+Settings…, Tutorial… and Training… open windows of Homekey itself: one app,
+one Dock-less process, one Accessibility grant. They are SwiftUI
+(`macos/NeruSettings/Sources`) built by `scripts/build-settings.sh` into
+`bin/libhomekeysettings.a` and linked into the daemon by
+`go build -tags homekey_ui` (`internal/adapter/settingsui`). That needs
+`CC="xcrun clang"`, the toolchain that built the library, and
+`MACOSX_DEPLOYMENT_TARGET=14.0`; `scripts/build-app.sh` and
+`just release-ci-darwin` set both. A build without the tag (`just build`,
+`go install`, Linux and Windows) has no windows: Settings… opens the config file,
+as in upstream Neru.
+
+The windows reach the daemon through the requests `neru` sends over its socket
+(`docs/reference/ipc.md`), handed to the same handler in-process: no socket and
+no `neru` processes. Swift calls Go only from a background queue
+(`docs/contributing/objective-c.md`, Swift settings windows). Their preferences
+(update checks, training bests) live in the daemon's defaults domain
+`com.y3owk1n.neru`; the first opening copies them over from the old settings
+app's `com.alexanderconun.neru.settings`.
+
+Memory: nothing until a window first opens; then about 32 MB of SwiftUI stays
+in the daemon until it quits, whether or not the window is still open. A Swift
+crash takes the daemon down with it.
+
+`macos/NeruSettings/Sources/App.swift` is the one Swift file that calls Go.
+`just check-settings` builds the rest with the self-checks, and
+`just render-settings DIR [DUMP]` with an offscreen renderer (below).
+
 ## Tutorial and Training
 
 The menu bar has **Tutorial…** and **Training…** right after Settings…. Both
-are windows of the settings app, so you work through them with Homekey itself:
+are windows of Homekey itself, so you work through them with Homekey:
 
 - **Tutorial**: seven steps (show labels, click, right-click, search, scroll,
   grid, chain clicks), each with targets to practise on. The instructions are
@@ -123,37 +153,36 @@ are windows of the settings app, so you work through them with Homekey itself:
   between openings.
 - **Training**: rounds of ten hits on the ★ button (Clicking, Right-click,
   Search) or on a dot only the grid reaches (Grid). The best average of each
-  round type is kept in the settings app's defaults
-  (`com.alexanderconun.neru.settings`, keys `trainingBest.<round>`). In a
+  round type is kept in the daemon's defaults (`com.y3owk1n.neru`, keys
+  `trainingBest.<round>`). In a
   Right-click round the left click a label gives the ★ button on the way is
   no miss. After a hit the board deals again. With Chain clicks the labels
   read it again by themselves; labels still up otherwise (after Shift+L or
   Shift+R) stay on the old board until shown anew. homekey-rs reads it again
-  in-process, but the CLI cannot: `neru hints` over open labels drops their
-  search and `--on-exit` steps, and opens new labels if they closed since a
+  in-process, but a `hints` request cannot: over open labels it drops their
+  search and `--on-exit` steps, and it opens new labels if they closed since a
   `status` read. A daemon request that scans again only open, untouched
   labels would close that.
 
-The daemon opens each window with
-`open -a "<…>/Helpers/Homekey Settings.app" homekey-settings://<settings|tutorial|training>`,
-naming the exact app because LaunchServices may know older copies that claim
-the scheme too. The app opens just that window whether or not it is running.
-The windows follow the mode through `neru watch` while they are open.
+The windows follow the mode through the daemon's watch stream while they are
+open.
 
 The first time the daemon runs with Accessibility granted it opens the
 Tutorial once and writes `~/Library/Application Support/neru/tutorial-shown`.
-If it could not open it (no settings app, or `open` failed), nothing is
-written and the next launch tries again. Delete that file to see it open by
+If it could not open it (a build without the windows), nothing is written and
+the next launch tries again. Delete that file to see it open by
 itself again.
 
 To check the windows' layout without screen recording, render them offscreen:
 
 ```bash
-"bin/Homekey Settings.app/Contents/MacOS/HomekeySettings" --render /tmp/render [dump.json]
+just render-settings /tmp/render [dump.json]   # or bin/render-settings, which build-app.sh builds
 ```
 
-It writes light and dark PNGs of every tutorial step, the finished screen and
-each training round, never runs the CLI and never writes defaults. Training
+It writes light and dark PNGs of every Settings page, every tutorial step, the
+finished screen and each training round, never needs a daemon and never writes
+defaults. The Settings sidebar comes out blank: its material does not draw
+offscreen. Training
 boards are dealt the same every time, the same as homekey-rs's renders, so the
 two versions can be compared side by side. `dump.json`
 is a saved `neru config dump` to render with; without it the default shortcuts
@@ -170,7 +199,7 @@ stay the same:
 | --- | --- |
 | Bundle id `com.y3owk1n.neru` | Accessibility, Screen Recording and notification grants are keyed on it. The default menu bar hint target and users' copied configs name it. |
 | launchd label `com.y3owk1n.neru` | Renaming it orphans the registered agent, and you end up running two KeepAlive daemons. |
-| Executable `neru` | The settings app, oku and nix look it up by name. |
+| Executable `neru` | oku and nix look it up by name. |
 | `~/.config/neru`, the `neru.sock` socket, `~/Library/Logs/neru` | Existing configs and logs keep working, and a CLI and a daemon from either build can still talk. |
 | `Neru version <tag>` output | Version checks parse that prefix. |
 | Go module path `github.com/y3owk1n/neru` | Every import and the version ldflags use it. Renaming it would conflict with every upstream merge. |

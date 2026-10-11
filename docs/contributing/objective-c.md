@@ -120,3 +120,25 @@ if ([NSThread isMainThread]) {
 
 Use `dispatch_sync` when the caller needs the result, and `dispatch_async` for
 UI updates and other non-blocking work.
+
+## Swift settings windows
+
+The Settings, Tutorial and Training windows are Swift (`macos/NeruSettings`),
+linked into the daemon only by the app build (`-tags homekey_ui`).
+`internal/adapter/settingsui` is their bridge and `settingsui.h` its whole
+interface. Its functions carry a `Homekey` prefix: they are not part of the
+`Neru*` bridge above.
+
+- **Swift never calls Go on the main thread.** `HomekeyCommand` answers through
+  the IPC controller, whose handlers take `h.mu` and `App.enabledMu` and, under
+  them, `dispatch_sync` to the main queue (overlays, hint search, the event
+  tap). Called from the main thread, the two wait on each other forever. Swift
+  sends from `Neru.queue`, and `InProcessDaemon.send` traps on the main queue
+  (`dispatchPrecondition`). `HomekeyWatch` and `HomekeyWatchStop` run on a
+  serial queue of their own.
+- **Go never waits on Swift.** `HomekeySettingsOpen` and `HomekeyWatchLine` copy
+  their argument and `DispatchQueue.main.async` the rest, so they return at once
+  from any thread, the main thread included.
+- **Requests are never logged**: `config-set` carries the user's values.
+- `macos/NeruSettings/Sources/App.swift` is the one Swift file that names a C
+  symbol, so `just check-settings` and `just render-settings` build without Go.
