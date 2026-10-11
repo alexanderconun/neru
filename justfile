@@ -122,23 +122,33 @@ build-darwin:
     CGO_ENABLED=1 go build -ldflags="{{ LDFLAGS }}" -o bin/neru-darwin ./cmd/neru
     @echo "✓ Build complete: bin/neru-darwin"
 
-# Build the macOS settings window app next to bin/neru
-[doc('Build bin/Homekey Settings.app, the settings window from the menu bar.')]
-build-settings:
-    bash scripts/build-settings.sh
+# Build the Settings, Tutorial and Training windows into bin/libhomekeysettings.a,
+# which `go build -tags homekey_ui` links into the daemon. ARCH: arm64 or amd64.
+[doc('Build bin/libhomekeysettings.a, the settings windows the app links in.')]
+build-settings ARCH="":
+    bash scripts/build-settings.sh {{ ARCH }}
 
-# Build build/dist.noindex/Homekey.app (binary, settings app, self-checks, signing) and
-# print how to install it. Installs nothing; see HOMEKEY.md.
+# Build build/dist.noindex/Homekey.app (binary with the windows, self-checks, signing)
+# and print how to install it. Installs nothing; see HOMEKEY.md.
 [doc('Build build/dist.noindex/Homekey.app and print the manual install steps.')]
 app:
     bash scripts/build-app.sh
 
-# Self-check the settings app's pure logic (config text edits, launchers, …)
+# Self-check the settings windows' pure logic (config text edits, launchers, …),
+# without Go: every Swift file but App.swift, the one that calls into the daemon.
 [doc('Run the settings window self-checks.')]
 check-settings:
     mkdir -p bin
-    swiftc -swift-version 5 -o bin/check-settings $(ls macos/NeruSettings/Sources/*.swift | grep -v '/App.swift$') macos/NeruSettings/Tests/*.swift
+    xcrun swiftc -swift-version 5 -o bin/check-settings $(ls macos/NeruSettings/Sources/*.swift | grep -v '/App.swift$') macos/NeruSettings/Tests/*.swift
     ./bin/check-settings
+
+# Draw every Settings page, Tutorial step and Training round offscreen, light and
+# dark, into DIR as PNGs, without a daemon. DUMP is a saved `neru config dump`.
+[doc('Render the settings windows offscreen into DIR as PNGs.')]
+render-settings DIR DUMP="":
+    mkdir -p bin
+    xcrun swiftc -swift-version 5 -target "$(uname -m)-apple-macos14.0" -o bin/render-settings $(ls macos/NeruSettings/Sources/*.swift | grep -v '/App.swift$') macos/NeruSettings/Render/main.swift
+    ./bin/render-settings {{ DIR }} {{ DUMP }}
 
 # Build with optimizations for release
 [doc('Build an optimized, trimpath release binary into bin/neru.')]
@@ -161,13 +171,14 @@ build-version VERSION_OVERRIDE:
 
 # Usage: just release-ci-darwin arm64 v1.2.3
 [doc('Build the macOS release artifact, on a native macOS host.')]
-release-ci-darwin ARCH VERSION_OVERRIDE:
+release-ci-darwin ARCH VERSION_OVERRIDE: (build-settings ARCH)
     @echo "Building release artifact (darwin/{{ ARCH }}) for CI..."
     @echo "Version: {{ VERSION_OVERRIDE }}"
     @echo "Commit: {{ GIT_COMMIT }}"
     @echo "Date: {{ BUILD_DATE }}"
     mkdir -p bin
-    CGO_ENABLED=1 GOOS=darwin GOARCH={{ ARCH }} MACOSX_DEPLOYMENT_TARGET={{ MACOSX_DEPLOYMENT_TARGET }} CGO_LDFLAGS_ALLOW='-Wl,.*' CGO_LDFLAGS='-Wl,-macosx_version_min,{{ MACOSX_DEPLOYMENT_TARGET }}' go build -ldflags="-s -w -X github.com/y3owk1n/neru/internal/buildinfo.Version={{ VERSION_OVERRIDE }} -X github.com/y3owk1n/neru/internal/buildinfo.GitCommit={{ GIT_COMMIT }} -X github.com/y3owk1n/neru/internal/buildinfo.BuildDate={{ BUILD_DATE }}" -trimpath -o bin/neru-darwin-{{ ARCH }} ./cmd/neru
+    rm -f bin/neru-darwin-{{ ARCH }}
+    CGO_ENABLED=1 CC="xcrun clang" GOOS=darwin GOARCH={{ ARCH }} MACOSX_DEPLOYMENT_TARGET={{ MACOSX_DEPLOYMENT_TARGET }} go build -tags homekey_ui -ldflags="-s -w -X github.com/y3owk1n/neru/internal/buildinfo.Version={{ VERSION_OVERRIDE }} -X github.com/y3owk1n/neru/internal/buildinfo.GitCommit={{ GIT_COMMIT }} -X github.com/y3owk1n/neru/internal/buildinfo.BuildDate={{ BUILD_DATE }}" -trimpath -o bin/neru-darwin-{{ ARCH }} ./cmd/neru
     @echo "✓ Release artifact for darwin/{{ ARCH }} built successfully"
 
 # Build a Linux release artifact for CI on a native Linux host.

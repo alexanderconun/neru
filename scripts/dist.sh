@@ -76,14 +76,6 @@ if [ "$host" = macos ]; then
         esac
     fi
     sign="${sign:--}"
-    # The settings window ships inside the app (`just build-settings`). Nested
-    # code is signed first, inside-out; --deep would stamp Neru's entitlements on it.
-    helper="bin/Homekey Settings.app"
-    if [ -d "$helper" ]; then
-        mkdir -p "$app/Contents/Helpers"
-        cp -R "$helper" "$app/Contents/Helpers/"
-        codesign --force --sign "$sign" --options runtime "$app/Contents/Helpers/Homekey Settings.app"
-    fi
     codesign --force --sign "$sign" --entitlements resources/Neru.entitlements --options runtime "$app"
 fi
 echo "✓ Release layout assembled in $out"

@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 #
-# Build build/dist.noindex/Homekey.app in one go: the version-stamped neru binary, the
-# settings app and its self-checks, then scripts/dist.sh to bundle and sign.
+# Build build/dist.noindex/Homekey.app in one go: the version-stamped neru binary
+# with the settings windows linked in, their self-checks, then scripts/dist.sh to
+# bundle and sign.
 # Needs only Go and the Xcode command line tools, no `just`. Installs nothing:
 # it ends by printing the manual install steps. The .noindex folder keeps
 # Spotlight from listing the build as a second Homekey with the same bundle id.
 #
 #   scripts/build-app.sh
 #
-# The settings steps mirror the justfile's build-settings and check-settings
-# recipes, and the ldflags its LDFLAGS; keep them in step.
+# The settings steps mirror the justfile's build-settings, check-settings and
+# render-settings recipes, and the ldflags its LDFLAGS; keep them in step.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -20,19 +21,25 @@ commit="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 date="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 pkg=github.com/y3owk1n/neru/internal/buildinfo
 
+bash scripts/build-settings.sh
+
 echo "Building neru $version..."
-mkdir -p bin
-CGO_ENABLED=1 go build \
+# go build does not hash the Swift library: an existing bin/neru would count as
+# up to date after a Swift-only change. xcrun clang links with swiftc's SDK.
+rm -f bin/neru
+CGO_ENABLED=1 CC="xcrun clang" MACOSX_DEPLOYMENT_TARGET=14.0 go build -tags homekey_ui \
     -ldflags="-s -w -X $pkg.Version=$version -X $pkg.GitCommit=$commit -X $pkg.BuildDate=$date" \
     -o bin/neru ./cmd/neru
 
-bash scripts/build-settings.sh
-
-echo "Checking the settings logic..."
+# Every Swift file but App.swift, the one that calls into Go.
 # shellcheck disable=SC2046 # one path per source file, no spaces in them
-swiftc -swift-version 5 -o bin/check-settings \
-    $(ls macos/NeruSettings/Sources/*.swift | grep -v '/App.swift$') macos/NeruSettings/Tests/*.swift
+set -- $(ls macos/NeruSettings/Sources/*.swift | grep -v '/App.swift$')
+echo "Checking the settings logic..."
+xcrun swiftc -swift-version 5 -o bin/check-settings "$@" macos/NeruSettings/Tests/*.swift
 ./bin/check-settings
+echo "Building bin/render-settings..."
+xcrun swiftc -swift-version 5 -target "$(uname -m)-apple-macos14.0" -o bin/render-settings \
+    "$@" macos/NeruSettings/Render/main.swift
 
 NERU_DIST_VERSION="$version" bash scripts/dist.sh bin/neru build/dist.noindex
 
