@@ -68,8 +68,5 @@ struct ContentView: View {
             }
             .navigationTitle(page.rawValue)
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            neru.refresh()
-        }
     }
 }

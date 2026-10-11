@@ -49,8 +49,14 @@ enum Windows {
         window.isRestorable = false
         window.center()
         window.setFrameAutosaveName(name)
-        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in
+        let center = NotificationCenter.default
+        center.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in
             MainActor.assumeIsolated { closed(name) }
+        }
+        // Read the config again whenever the user comes back to a window, not
+        // when the daemon activates for anything else (hint search does).
+        center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { _ in
+            MainActor.assumeIsolated { neru.refresh() }
         }
         return window
     }
