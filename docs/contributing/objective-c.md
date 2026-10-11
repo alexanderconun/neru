@@ -132,7 +132,8 @@ with `OnMainThread` (`mainthread.go`) or `onMainIfOwn`
 (`accessibility_window_darwin.m`), both inline when already on the main thread.
 A hit-test that lands on one of our windows while another app is scanned still
 runs our hit-testing on the scan goroutine; it only happens with
-`visible_check_enabled` on.
+`visible_check_enabled` on. Our own elements skip that check: on the main
+thread, a hit-test that lands on another app's window would wait on that app.
 
 ### Calls from Swift into Go
 

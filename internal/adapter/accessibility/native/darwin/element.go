@@ -790,7 +790,9 @@ func (e *Element) IsClickable(
 
 		// Resolve visibility check from config (per-app override, then global).
 		// visible_check_enabled defaults to false, meaning skipVisCheck is true by default.
-		skipVisCheck := !resolveVisibleCheckEnabled(info.PID(), configProvider)
+		// Not for our own elements: they are checked on the main thread, where a
+		// hit-test that lands on another app's window would wait on that app.
+		skipVisCheck := e.isOwn() || !resolveVisibleCheckEnabled(info.PID(), configProvider)
 
 		isWidget := strings.HasPrefix(info.Identifier(), "widget-local:")
 
