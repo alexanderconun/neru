@@ -3,6 +3,10 @@ package systray_test
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
+	"runtime"
+	"slices"
 	"testing"
 
 	"go.uber.org/zap/zaptest"
@@ -130,6 +134,53 @@ func TestComponent_OnReady(t *testing.T) {
 
 			t.Errorf("OnReady() built no %q item; got %v", want, titles)
 		}
+	}
+
+	// Tutorial and Training follow Settings, and like it exist only where
+	// the settings app does.
+	var titles []string
+	for _, item := range items {
+		titles = append(titles, item.Title())
+	}
+
+	at := slices.Index(titles, "Settings…")
+	want := []string{"Settings…", "Tutorial…", "Training…"}
+	if at < 0 || !slices.Equal(titles[at:min(at+len(want), len(titles))], want) {
+		t.Errorf("OnReady() menu = %v, want Tutorial… and Training… right after Settings…", titles)
+	}
+
+	hidden := runtime.GOOS != "darwin"
+	for _, title := range want {
+		if item := tray.FindItem(title); item != nil && item.Hidden() != hidden {
+			t.Errorf("%q hidden = %v on %s", title, item.Hidden(), runtime.GOOS)
+		}
+	}
+}
+
+func TestOpenTutorialOnce(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	dataDir := filepath.Join(t.TempDir(), "neru")
+	opened := 0
+	open := func(found bool) func() bool {
+		return func() bool {
+			opened++
+
+			return found
+		}
+	}
+
+	// No settings app: nothing is marked, so the next launch tries again.
+	systray.OpenTutorialOnce(dataDir, open(false), logger)
+	systray.OpenTutorialOnce(dataDir, open(true), logger)
+	systray.OpenTutorialOnce(dataDir, open(true), logger)
+
+	if opened != 2 {
+		t.Errorf("tutorial opened %d times, want 2: once without the app, once for good", opened)
+	}
+
+	_, err := os.Stat(filepath.Join(dataDir, "tutorial-shown"))
+	if err != nil {
+		t.Errorf("tutorial not marked shown: %v", err)
 	}
 }
 

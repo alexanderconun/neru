@@ -2,6 +2,8 @@ package systray
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -72,6 +74,8 @@ type Component struct {
 	mRecursiveGrid      ports.SystrayMenuItem
 	mBisect             ports.SystrayMenuItem
 	mSettings           ports.SystrayMenuItem
+	mTutorial           ports.SystrayMenuItem
+	mTraining           ports.SystrayMenuItem
 	mConfig             ports.SystrayMenuItem
 	mReloadConfig       ports.SystrayMenuItem
 	mOpenConfig         ports.SystrayMenuItem
@@ -212,8 +216,13 @@ func (c *Component) OnReady() {
 	c.tray.AddSeparator()
 
 	c.mSettings = c.tray.AddMenuItem("Settings…")
+	c.mTutorial = c.tray.AddMenuItem("Tutorial…")
+	c.mTraining = c.tray.AddMenuItem("Training…")
+
 	if runtime.GOOS != "darwin" {
 		c.mSettings.Hide()
+		c.mTutorial.Hide()
+		c.mTraining.Hide()
 	}
 
 	c.mConfig = c.tray.AddMenuItem("Config")
@@ -270,7 +279,7 @@ func (c *Component) Close() {
 // OpenSettings opens the settings window, as the Settings… menu item does. The
 // macOS reopen event calls it on the Cocoa main thread, and opening runs
 // /usr/bin/open synchronously, so it must not run inline.
-func (c *Component) OpenSettings() { go c.handleOpenSettings() }
+func (c *Component) OpenSettings() { go c.handleOpenSettings(SettingsWindow) }
 
 // updateMenuItems updates the systray menu items based on the current enabled state.
 func (c *Component) updateMenuItems(enabled bool) {
@@ -314,7 +323,11 @@ func (c *Component) handleEvents() {
 		case <-c.mOpenConfig.Clicked():
 			go c.handleOpenConfig()
 		case <-c.mSettings.Clicked():
-			go c.handleOpenSettings()
+			go c.handleOpenSettings(SettingsWindow)
+		case <-c.mTutorial.Clicked():
+			go c.handleOpenSettings(TutorialWindow)
+		case <-c.mTraining.Clicked():
+			go c.handleOpenSettings(TrainingWindow)
 		case <-c.mSourceCode.Clicked():
 			go func() {
 				err := platform.OpenExternal(c.ctx, buildinfo.RepoURL)
@@ -444,9 +457,29 @@ func (c *Component) handleOpenConfig() {
 // settingsAppName is the macOS settings window app, built by `just build-settings`.
 const settingsAppName = "Homekey Settings.app"
 
-// handleOpenSettings opens the settings app. Without one it falls back to the config file.
-func (c *Component) handleOpenSettings() {
-	if OpenSettingsApp(c.ctx, c.logger) {
+// The settings app's windows. Each opens from a homekey-settings://<window>
+// URL, which the app handles whether or not it is running and without opening
+// its other windows (macos/NeruSettings/Sources/App.swift).
+const (
+	SettingsWindow = "settings"
+	TutorialWindow = "tutorial"
+	TrainingWindow = "training"
+)
+
+// tutorialShownFile, in the user data directory, records that the tutorial
+// has opened by itself once.
+const tutorialShownFile = "tutorial-shown"
+
+// handleOpenSettings opens one of the settings app's windows. Without the app,
+// Settings falls back to the config file.
+func (c *Component) handleOpenSettings(window string) {
+	if OpenSettingsApp(c.ctx, c.logger, window) {
+		return
+	}
+
+	if window != SettingsWindow {
+		c.notify("Settings app not found")
+
 		return
 	}
 
@@ -454,11 +487,11 @@ func (c *Component) handleOpenSettings() {
 	c.handleOpenConfig()
 }
 
-// OpenSettingsApp launches the settings app bundled in Neru.app, next to the
-// neru binary, or in /Applications, and reports whether it found one. It
-// needs no tray, so the headless daemon's reopen handler uses it too. It runs
-// /usr/bin/open synchronously: never call it on the Cocoa main thread.
-func OpenSettingsApp(ctx context.Context, logger *zap.Logger) bool {
+// OpenSettingsApp opens window in the settings app bundled in Neru.app, next
+// to the neru binary, or in /Applications, and reports whether it found one.
+// It needs no tray, so the headless daemon's reopen handler uses it too. It
+// runs /usr/bin/open synchronously: never call it on the Cocoa main thread.
+func OpenSettingsApp(ctx context.Context, logger *zap.Logger, window string) bool {
 	candidates := []string{filepath.Join("/Applications", settingsAppName)}
 
 	exe, err := os.Executable()
@@ -481,15 +514,43 @@ func OpenSettingsApp(ctx context.Context, logger *zap.Logger) bool {
 			continue
 		}
 
-		openErr := platform.OpenExternal(ctx, path)
+		// That exact copy: older ones LaunchServices still knows claim the URL too.
+		openErr := platform.OpenWith(ctx, path, "homekey-settings://"+window)
 		if openErr != nil {
-			logger.Error("Failed to open settings app", zap.Error(openErr))
+			logger.Error(
+				"Failed to open settings app",
+				zap.Error(openErr),
+				zap.String("window", window),
+			)
 		}
 
 		return true
 	}
 
 	return false
+}
+
+// OpenTutorialOnce opens the tutorial the first time the daemon runs, and
+// marks it shown in dataDir so it never opens by itself again. open opens it
+// and reports whether the settings app was there; without it nothing is
+// marked, so a later launch tries again. It blocks on open: run it off the
+// Cocoa main thread.
+func OpenTutorialOnce(dataDir string, open func() bool, logger *zap.Logger) {
+	marker := filepath.Join(dataDir, tutorialShownFile)
+
+	_, statErr := os.Stat(marker)
+	if !errors.Is(statErr, fs.ErrNotExist) || !open() {
+		return
+	}
+
+	err := os.MkdirAll(dataDir, 0o700)
+	if err == nil {
+		err = os.WriteFile(marker, nil, 0o600)
+	}
+
+	if err != nil {
+		logger.Warn("Could not mark the tutorial shown, it opens again next launch", zap.Error(err))
+	}
 }
 
 // handleReloadConfig reloads the configuration from disk.
