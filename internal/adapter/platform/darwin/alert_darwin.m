@@ -21,6 +21,27 @@ static int showAccessibilityPermissionStartupAlertOnMainThread(void);
 
 #pragma mark - Alert Functions
 
+NSInteger NeruRunAlertModal(NSAlert *alert) {
+	NSWindow *key = NSApp.keyWindow;
+
+	[[alert window] setLevel:NSFloatingWindowLevel];
+	[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+	[[alert window] center];
+	[[alert window] makeKeyAndOrderFront:nil];
+	[NSApp activateIgnoringOtherApps:YES];
+
+	NSModalResponse response = [alert runModal];
+	[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+
+	// Overlays are borderless; only a titled window is one the user works in.
+	if (key.visible && (key.styleMask & NSWindowStyleMaskTitled)) {
+		[NSApp activateIgnoringOtherApps:YES];
+		[key makeKeyAndOrderFront:nil];
+	}
+
+	return response;
+}
+
 /// Show a config validation error alert with error details and config path
 /// @param errorMessage The error message to display
 /// @param configPath The path to the config file
@@ -64,16 +85,7 @@ static int showAlertOnMainThread(const char *errorMessage, const char *configPat
 	[alert addButtonWithTitle:@"OK"];
 	[alert addButtonWithTitle:@"Copy Path"];
 
-	// Bring alert to front and ensure it receives focus
-	[[alert window] setLevel:NSFloatingWindowLevel];
-	[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-	[[alert window] center];
-	[[alert window] makeKeyAndOrderFront:nil];
-	[NSApp activateIgnoringOtherApps:YES];
-
-	// Run modal and revert activation policy once dismissed
-	NSModalResponse response = [alert runModal];
-	[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+	NSModalResponse response = NeruRunAlertModal(alert);
 
 	// Handle button response
 	if (response == NSAlertFirstButtonReturn) {
@@ -129,16 +141,7 @@ static int showOnboardingAlertOnMainThread(const char *configPath) {
 	[alert addButtonWithTitle:@"Use Defaults (No Config)"];
 	[alert addButtonWithTitle:@"Quit"];
 
-	// Bring alert to front and ensure it receives focus
-	[[alert window] setLevel:NSFloatingWindowLevel];
-	[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-	[[alert window] center];
-	[[alert window] makeKeyAndOrderFront:nil];
-	[NSApp activateIgnoringOtherApps:YES];
-
-	// Run modal and revert activation policy once dismissed
-	NSModalResponse response = [alert runModal];
-	[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+	NSModalResponse response = NeruRunAlertModal(alert);
 
 	// Handle button response
 	if (response == NSAlertFirstButtonReturn) {
@@ -188,12 +191,6 @@ static int showAccessibilityPermissionStartupAlertOnMainThread(void) {
 		[alert addButtonWithTitle:[NSString stringWithFormat:@"Granted, Start %@", appName]];
 		[alert addButtonWithTitle:@"Quit"];
 
-		[[alert window] setLevel:NSFloatingWindowLevel];
-		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-		[[alert window] center];
-		[[alert window] makeKeyAndOrderFront:nil];
-		[NSApp activateIgnoringOtherApps:YES];
-
 		// Ends the alert once access is granted, so startup goes on without a
 		// click. abortModal, not stopModal: a timer is not an event callout,
 		// and stopModal would wait for the next event to arrive.
@@ -206,9 +203,8 @@ static int showAccessibilityPermissionStartupAlertOnMainThread(void) {
 		                                         }];
 		[[NSRunLoop currentRunLoop] addTimer:poll forMode:NSModalPanelRunLoopMode];
 
-		NSModalResponse response = [alert runModal];
+		NSModalResponse response = NeruRunAlertModal(alert);
 		[poll invalidate];
-		[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 
 		if (response == NSAlertFirstButtonReturn) {
 			NeruRequestAccessibilityPermissions();

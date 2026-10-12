@@ -85,14 +85,7 @@ static int showScreenCapturePermissionAlertOnMainThread(void) {
 		[alert addButtonWithTitle:@"I've Granted It"];
 		[alert addButtonWithTitle:@"Cancel"];
 
-		[[alert window] setLevel:NSFloatingWindowLevel];
-		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-		[[alert window] center];
-		[[alert window] makeKeyAndOrderFront:nil];
-		[NSApp activateIgnoringOtherApps:YES];
-
-		NSModalResponse response = [alert runModal];
-		[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+		NSModalResponse response = NeruRunAlertModal(alert);
 
 		if (response == NSAlertFirstButtonReturn) {
 			NeruRequestScreenCapturePermissions();
@@ -110,14 +103,7 @@ static int showScreenCapturePermissionAlertOnMainThread(void) {
 				restartAlert.alertStyle = NSAlertStyleInformational;
 				[restartAlert addButtonWithTitle:[NSString stringWithFormat:@"Quit %@", appName]];
 
-				[[restartAlert window] setLevel:NSFloatingWindowLevel];
-				[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-				[[restartAlert window] center];
-				[[restartAlert window] makeKeyAndOrderFront:nil];
-				[NSApp activateIgnoringOtherApps:YES];
-
-				[restartAlert runModal];
-				[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+				NeruRunAlertModal(restartAlert);
 
 				return 3;  // Restart/Quit
 			}

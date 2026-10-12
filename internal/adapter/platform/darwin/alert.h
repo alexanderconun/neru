@@ -19,6 +19,15 @@ static inline NSString *NeruAppName(void) {
 
 #pragma mark - Alert Functions
 
+@class NSAlert;
+
+/// Run an alert as a modal in front of every other app. An accessory app turns
+/// regular to take the focus for it, and turning back deactivates the app, so a
+/// titled window of ours that was key gets the focus back afterwards (the
+/// settings windows run in this process).
+/// @return The alert's modal response.
+NSInteger NeruRunAlertModal(NSAlert *alert);
+
 /// Show a config validation error alert with error details and config path
 /// @param errorMessage The error message to display
 /// @param configPath The path to the config file
