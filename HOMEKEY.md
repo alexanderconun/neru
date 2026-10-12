@@ -56,7 +56,8 @@ for that reason. Install by hand:
    you made the link.
 3. Remove Homekey from System Settings > Privacy & Security > Accessibility.
 
-Your config (`~/.config/neru`) and logs (`~/Library/Logs/neru`) stay; delete
+Your config (`~/.config/neru`), logs (`~/Library/Logs/neru`) and the
+Tutorial's shown marker (`~/Library/Application Support/neru`) stay; delete
 them by hand if you want them gone. So does the "Homekey Local Signing"
 identity, which Keychain Access can delete.
 
