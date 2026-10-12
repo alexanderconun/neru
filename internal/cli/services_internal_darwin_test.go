@@ -4,6 +4,7 @@ package cli
 
 import (
 	"encoding/xml"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,6 +118,131 @@ func TestRenderPlist_EscapesPathsThatAreNotValidXML(t *testing.T) {
 			decodeErr := xml.Unmarshal([]byte(plist), new(any))
 			if decodeErr != nil {
 				t.Errorf("rendered plist is not well-formed XML: %v", decodeErr)
+			}
+		})
+	}
+}
+
+var errNotLoaded = errors.New("not loaded")
+
+// TestLoginItem_InstallAfterOffWhileTheJobIsStillLoaded pins turning launch at
+// login back on after it was turned off while the job stayed loaded: off from
+// inside the launchd job removes only the plist. A job still loaded from our
+// own missing plist is ours; one loaded from anywhere else stays refused.
+func TestLoginItem_InstallAfterOffWhileTheJobIsStillLoaded(t *testing.T) {
+	const foreign = "/Library/LaunchAgents/" + serviceLabel + ".plist"
+
+	testCases := []struct {
+		name           string
+		xpcService     string
+		loadedFrom     string // "ours" for our plist path, "" for nothing loaded
+		uninstallFirst bool
+		wantOn         bool
+		wantErr        error
+		wantBootstrap  bool
+	}{
+		{
+			name:           "this daemon is the job: off then on writes the plist back",
+			xpcService:     serviceLabel,
+			loadedFrom:     "ours",
+			uninstallFirst: true,
+			wantOn:         true,
+		},
+		{
+			name:          "another instance boots our stale job out and installs",
+			loadedFrom:    "ours",
+			wantOn:        true,
+			wantBootstrap: true,
+		},
+		{
+			name:          "nothing loaded installs",
+			wantOn:        true,
+			wantBootstrap: true,
+		},
+		{
+			name:       "a job loaded from elsewhere is refused",
+			loadedFrom: foreign,
+			wantErr:    errServiceAlreadyLoaded,
+		},
+		{
+			name:       "even when this daemon is that job",
+			xpcService: serviceLabel,
+			loadedFrom: foreign,
+			wantErr:    errServiceAlreadyLoaded,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("XPC_SERVICE_NAME", testCase.xpcService)
+
+			plistPath, err := expandPath(plistFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			loaded := testCase.loadedFrom
+			if loaded == "ours" {
+				loaded = plistPath
+
+				_, err = writePlist()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			bootstrapped := false
+			original := launchctl
+
+			t.Cleanup(func() { launchctl = original })
+
+			launchctl = func(args ...string) ([]byte, error) {
+				switch args[0] {
+				case "list", "print":
+					if loaded == "" {
+						return nil, errNotLoaded
+					}
+
+					return []byte(
+						"gui/501/" + serviceLabel + " = {\n\tpath = " + loaded + "\n}\n",
+					), nil
+				case "bootout":
+					loaded = ""
+				case "bootstrap":
+					loaded, bootstrapped = args[2], true
+				}
+
+				return nil, nil
+			}
+
+			if testCase.uninstallFirst {
+				on, uninstallErr := LoginItem("uninstall")
+				if on || uninstallErr != nil || loaded != plistPath {
+					t.Fatalf(
+						"uninstall = %v, %v, loaded %q; want off, job kept",
+						on,
+						uninstallErr,
+						loaded,
+					)
+				}
+			} else if loaded == plistPath {
+				_ = os.Remove(plistPath) // what an earlier uninstall left
+			}
+
+			on, err := LoginItem("install")
+			if on != testCase.wantOn || !errors.Is(err, testCase.wantErr) {
+				t.Errorf(
+					"install = %v, %v; want %v, %v",
+					on,
+					err,
+					testCase.wantOn,
+					testCase.wantErr,
+				)
+			}
+
+			if bootstrapped != testCase.wantBootstrap {
+				t.Errorf("bootstrapped = %v, want %v", bootstrapped, testCase.wantBootstrap)
 			}
 		})
 	}

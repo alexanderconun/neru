@@ -113,10 +113,16 @@ func getBinaryPath() (string, error) {
 	return filepath.EvalSymlinks(execPath)
 }
 
-func isServiceLoaded() bool {
-	cmd := exec.CommandContext(context.Background(), "launchctl", "list", serviceLabel)
+// launchctl runs launchctl with args and returns its standard output. It is a
+// variable so tests can stand in for launchd.
+var launchctl = func(args ...string) ([]byte, error) {
+	return exec.CommandContext(context.Background(), "launchctl", args...).Output()
+}
 
-	return cmd.Run() == nil
+func isServiceLoaded() bool {
+	_, err := launchctl("list", serviceLabel)
+
+	return err == nil
 }
 
 func installService() error {
@@ -124,9 +130,31 @@ func installService() error {
 		return errServiceAlreadyLoaded
 	}
 
+	expandedPlist, err := writePlist()
+	if err != nil {
+		return err
+	}
+
+	currentUser, err := user.Current()
+	if err != nil {
+		return fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	// Load service
+	_, err = launchctl("bootstrap", "gui/"+currentUser.Uid, expandedPlist)
+	if err != nil {
+		return fmt.Errorf("failed to load service: %w", err)
+	}
+
+	return nil
+}
+
+// writePlist writes the launch agent plist for this binary, refusing to
+// replace one already there, and returns its path. It loads nothing.
+func writePlist() (string, error) {
 	binPath, err := getBinaryPath()
 	if err != nil {
-		return fmt.Errorf("failed to get binary path: %w", err)
+		return "", fmt.Errorf("failed to get binary path: %w", err)
 	}
 
 	// launchd opens the redirect itself, before neru runs, and it creates the
@@ -135,26 +163,26 @@ func installService() error {
 	// is the launch most likely to fail, goes nowhere.
 	stderrPath, err := daemonStderrPath()
 	if err != nil {
-		return fmt.Errorf("failed to resolve the log directory: %w", err)
+		return "", fmt.Errorf("failed to resolve the log directory: %w", err)
 	}
 
 	err = os.MkdirAll(filepath.Dir(stderrPath), logger.DefaultDirPerms)
 	if err != nil {
-		return fmt.Errorf("failed to create the log directory: %w", err)
+		return "", fmt.Errorf("failed to create the log directory: %w", err)
 	}
 
 	plistContent := renderPlist(binPath, stderrPath)
 
 	expandedDir, err := expandPath(launchAgentsDir)
 	if err != nil {
-		return fmt.Errorf("failed to expand LaunchAgents path: %w", err)
+		return "", fmt.Errorf("failed to expand LaunchAgents path: %w", err)
 	}
 
 	expandedPlist := filepath.Join(expandedDir, serviceLabel+".plist")
 
 	_, statErr := os.Stat(expandedPlist)
 	if statErr == nil {
-		return fmt.Errorf(
+		return "", fmt.Errorf(
 			"%w at %s; remove it manually or uninstall first",
 			errPlistAlreadyExists,
 			expandedPlist,
@@ -165,36 +193,17 @@ func installService() error {
 
 	err = os.MkdirAll(expandedDir, dirPerm)
 	if err != nil {
-		return fmt.Errorf("failed to create LaunchAgents directory: %w", err)
+		return "", fmt.Errorf("failed to create LaunchAgents directory: %w", err)
 	}
 
 	const filePerm = 0o644
 
 	err = os.WriteFile(expandedPlist, []byte(plistContent), filePerm)
 	if err != nil {
-		return fmt.Errorf("failed to write plist: %w", err)
+		return "", fmt.Errorf("failed to write plist: %w", err)
 	}
 
-	currentUser, err := user.Current()
-	if err != nil {
-		return fmt.Errorf("failed to get current user: %w", err)
-	}
-
-	// Load service
-	cmd := exec.CommandContext(
-		context.Background(),
-		"launchctl",
-		"bootstrap",
-		"gui/"+currentUser.Uid,
-		expandedPlist,
-	)
-
-	err = cmd.Run()
-	if err != nil {
-		return fmt.Errorf("failed to load service: %w", err)
-	}
-
-	return nil
+	return expandedPlist, nil
 }
 
 func uninstallService() error {
@@ -209,13 +218,10 @@ func uninstallService() error {
 	}
 
 	// Unload service if loaded
-	cmd := exec.CommandContext(
-		context.Background(),
-		"launchctl",
+	_, _ = launchctl(
 		"bootout",
 		"gui/"+currentUser.Uid+"/"+serviceLabel,
-	)
-	_ = cmd.Run() // Ignore error if not loaded
+	) // Ignore error if not loaded
 
 	err = os.Remove(expandedPlist)
 	if err != nil && !os.IsNotExist(err) {
@@ -286,7 +292,9 @@ func expandPath(path string) (string, error) {
 // When launchd started this daemon, booting the job out would end the daemon,
 // and the window asking, before the plist went. So uninstall then only removes
 // the plist; the loaded job ends when the daemon quits (a clean exit is not
-// restarted) or at logout.
+// restarted) or at logout. Install treats a job still loaded from our missing
+// plist as ours, not as a foreign install: this daemon only writes the plist
+// back, any other process boots the stale job out and installs afresh.
 func LoginItem(op string) (bool, error) {
 	expandedPlist, err := expandPath(plistFile)
 	if err != nil {
@@ -296,6 +304,16 @@ func LoginItem(op string) (bool, error) {
 	switch op {
 	case "status":
 	case "install":
+		if loadedFromMissing(expandedPlist) {
+			if os.Getenv("XPC_SERVICE_NAME") == serviceLabel {
+				_, err = writePlist() // launchd loads it at the next login
+
+				break
+			}
+
+			_ = uninstallService()
+		}
+
 		err = installService()
 	case "uninstall":
 		if os.Getenv("XPC_SERVICE_NAME") != serviceLabel {
@@ -315,4 +333,24 @@ func LoginItem(op string) (bool, error) {
 	_, statErr := os.Stat(expandedPlist)
 
 	return statErr == nil, err
+}
+
+// loadedFromMissing reports whether our job is loaded from plistPath while
+// that file is gone: what uninstall leaves behind when this daemon is the job.
+// A job of the same label loaded from anywhere else (nix-darwin,
+// home-manager) is not ours to replace.
+func loadedFromMissing(plistPath string) bool {
+	_, statErr := os.Stat(plistPath)
+	if !os.IsNotExist(statErr) {
+		return false
+	}
+
+	currentUser, err := user.Current()
+	if err != nil {
+		return false
+	}
+
+	out, err := launchctl("print", "gui/"+currentUser.Uid+"/"+serviceLabel)
+
+	return err == nil && strings.Contains(string(out), "\tpath = "+plistPath+"\n")
 }
