@@ -31,7 +31,11 @@ enum Windows {
         // The Tutorial and Training start over at each opening; their view
         // goes when they close, which also ends their watch (onDisappear).
         if window.contentViewController == nil {
+            // A new view shrinks the window to its unlaid-out size, and the
+            // window then grows back from wherever that left it: keep the frame.
+            let frame = window.frame
             window.contentViewController = hosting(name)
+            window.setFrame(frame, display: false)
         }
         neru.exitMode()
         neru.refresh()
@@ -49,13 +53,17 @@ enum Windows {
 
     private static func make(_ name: String) -> NSWindow {
         let settings = name == "settings"
-        let window = NSWindow(contentViewController: hosting(name))
+        let controller = hosting(name)
+        let window = NSWindow(contentViewController: controller)
         window.styleMask = settings
             ? [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
             : [.titled, .closable, .miniaturizable]
         window.title = "\(Neru.appName) \(settings ? "Settings" : name == "tutorial" ? "Tutorial" : "Training")"
         window.isReleasedWhenClosed = false
         window.isRestorable = false
+        // The window is 1 pt wide until SwiftUI first lays out; centred like
+        // that, it would grow rightwards from the middle of the screen.
+        window.setContentSize(controller.view.fittingSize)
         window.center()
         window.setFrameAutosaveName(name)
         let center = NotificationCenter.default
