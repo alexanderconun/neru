@@ -1,6 +1,7 @@
 package modes
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"strings"
@@ -88,10 +89,11 @@ func (h *Handler) DebugProbeHints(
 		elem := hintItem.Element()
 		fmt.Fprintf(
 			&builder,
-			"  [%2d] role=%s title=%q bounds=%s\n",
+			"  [%2d] role=%s text=%q bounds=%s\n",
 			i+1,
 			elem.Role(),
-			elem.Title(),
+			// The first text --text matches: SwiftUI controls have no title.
+			cmp.Or(elem.Title(), elem.Description(), elem.Value(), elem.SearchText()),
 			elem.Bounds().String(),
 		)
 	}
