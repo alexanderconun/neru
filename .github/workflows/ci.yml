@@ -145,6 +145,17 @@ jobs:
               if: matrix.check == 'build' && runner.os == 'macOS'
               run: just build
 
+            # The in-process settings windows: the homekey_ui cgo bridge (its
+            # exports against settingsui.h) and the Swift library it links.
+            # Untagged builds and lint never see them; without this the
+            # release jobs would be the first to compile them.
+            - name: Build the settings windows
+              if: matrix.check == 'build' && runner.os == 'macOS'
+              run: |
+                  CC="xcrun clang" MACOSX_DEPLOYMENT_TARGET=14.0 go build -tags homekey_ui ./internal/adapter/settingsui
+                  just check-settings
+                  just build-settings
+
             - name: Run just test-ci
               if: matrix.check == 'test' && runner.os == 'macOS'
               run: just test-ci
