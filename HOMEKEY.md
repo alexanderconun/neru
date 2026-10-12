@@ -134,9 +134,10 @@ no `neru` processes. Swift calls Go only from a background queue
 `com.y3owk1n.neru`; the first opening copies them over from the old settings
 app's `com.alexanderconun.neru.settings`.
 
-Memory: nothing until a window first opens; then about 32 MB of SwiftUI stays
-in the daemon until it quits, whether or not the window is still open. A Swift
-crash takes the daemon down with it.
+Memory: nothing until a window first opens; then SwiftUI stays in the daemon
+until it quits, whether or not the window is still open: about 12 MB for the
+Tutorial, 30 MB for Settings, and up to about 50 MB once all three windows have
+been used. A Swift crash takes the daemon down with it.
 
 `macos/NeruSettings/Sources/App.swift` is the one Swift file that calls Go.
 `just check-settings` builds the rest with the self-checks, and
