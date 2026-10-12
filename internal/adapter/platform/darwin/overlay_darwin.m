@@ -2302,7 +2302,6 @@ static BOOL NeruWindowIsOnscreenPerWindowServer(NSInteger windowNumber);
 
 			self.needsWindowServerReattach = NO;
 			[self applyOverlayCollectionBehavior];
-			[self.window setIsVisible:YES];
 			[self.window orderFrontRegardless];
 			[self.window display];
 			[self.overlayView setNeedsDisplay:YES];
@@ -2548,7 +2547,8 @@ static void NeruOrderOverlayWindowIfDrawable(OverlayWindowController *controller
 	BOOL freshlyOrdered = !controller.window.isVisible;
 
 	[controller applyOverlayCollectionBehavior];
-	[controller.window setIsVisible:YES];
+	// Not setIsVisible:YES, which is makeKeyAndOrderFront: and has AppKit warn
+	// that the panel cannot become key whenever one of our windows is.
 	[controller.window orderFrontRegardless];
 
 	// The server can silently pin the window to one Space while AppKit's
