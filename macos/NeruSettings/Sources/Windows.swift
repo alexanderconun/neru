@@ -37,6 +37,13 @@ enum Windows {
             window.contentViewController = hosting(name)
             window.setFrame(frame, display: false)
         }
+        // Not right over another of ours, which it would hide: Training opens
+        // from the Tutorial, both centred at the same size.
+        if !window.isVisible, let under = windows.values.first(where: {
+            $0 !== window && $0.isVisible && $0.isOnActiveSpace && window.frame.contains($0.frame)
+        }) {
+            window.cascadeTopLeft(from: under.cascadeTopLeft(from: .zero))
+        }
         neru.exitMode()
         neru.refresh()
         if let front = NSWorkspace.shared.frontmostApplication, front != .current { previous = front }
